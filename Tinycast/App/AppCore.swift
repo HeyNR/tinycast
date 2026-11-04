@@ -78,6 +78,7 @@ final class AppCore {
     @ObservationIgnored private(set) lazy var mcp = MCPServerManager(oauth: mcpOAuth)
     let quickActionSettings = QuickActionSettingsStore()
     let customQuickActions = CustomQuickActionStore()
+    let chatPresets = ChatPresetStore()
     let chatGPTSubscription = ChatGPTSubscriptionManager()
     let installedAI = InstalledAIManager()
     @ObservationIgnored private var appliedLaunchRevisions: [InstalledAIKind: Int] = [:]
@@ -309,6 +310,11 @@ final class AppCore {
             notesCoordinator.applyEnabled()
             installedAI.launchSettings = { [aiSettings] in aiSettings.launch(for: $0) }
             chatGPTSubscription.launchSettings = { [aiSettings] in aiSettings.launch(for: .codex) }
+            chatPresets.onChange = { [weak self] _ in
+                self?.aiChatCoordinator.applyChatPresetsPresence()
+            }
+            // Before `hotKeys.start` even when off: the prune reads it.
+            chatPresets.load()
             aiChatCoordinator.applyEnabled()
             mcpCoordinator.applyEnabled()
             customQuickActions.onChange = { [weak self] _ in
@@ -398,6 +404,9 @@ final class AppCore {
             hotKeys.onRunQuickAction = { [weak self] id in
                 self?.quickActionCoordinator.run(id: id)
             }
+            hotKeys.onStartChatPreset = { [weak self] id in
+                self?.aiChatCoordinator.startChat(presetID: id)
+            }
             hotKeys.onRunAppleShortcut = { [weak self] id in
                 self?.appleShortcutCoordinator.run(id: id)
             }
@@ -435,7 +444,8 @@ final class AppCore {
                 windowLayoutIDs: Set(windowLayouts.layouts.map(\.id)),
                 windowRoomIDs: Set(rooms.rooms.map(\.id)),
                 customWindowSizeIDs: Set(customWindowSizes.sizes.map(\.id)),
-                quickActionIDs: Set(customQuickActions.actions.map(\.id)))
+                quickActionIDs: Set(customQuickActions.actions.map(\.id)),
+                chatPresetIDs: Set(chatPresets.presets.map(\.id)))
             // After `hotKeys.start`: Secure Input equivalents are built from the loaded bindings.
             hyperKey.onProblem = { [weak self] in self?.showMessage($0, tone: .danger) }
             hyperKey.start()
@@ -532,6 +542,8 @@ final class AppCore {
             return quicklinks.quicklink(id: id)?.name
         case .quickAction(let id):
             return customQuickActions.action(id: id)?.name
+        case .chatPreset(let id):
+            return chatPresets.preset(id: id)?.name
         case .windowLayout(let id):
             return windowLayouts.layout(id: id)?.name
         case .windowRoom(let id):
