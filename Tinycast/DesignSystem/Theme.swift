@@ -56,6 +56,8 @@ enum Theme {
         static let codeBlock: CGFloat = 14
         /// A window-to-be in the room preview, rounded like a real window rather than a row.
         static let roomCard: CGFloat = 16
+        /// The drag-to-snap target, inset from the real window frame so its edge stays visible.
+        static let windowSnapPreview: CGFloat = 12
         static let keyCap: CGFloat = 6
         static let recorderKeyCap: CGFloat = 4
         static let tooltip: CGFloat = 8
@@ -113,6 +115,8 @@ enum Theme {
         static let dropGuideCombinedFlashTolerance: CGFloat = 6
         static let dropGuideFadeThreshold: CGFloat = 36
         static let dropGuideFadeDistance: CGFloat = 180
+        static let windowSnapPreviewInset: CGFloat = 4
+        static let windowSnapPreviewStroke: CGFloat = 2
         static let bottomBarHeight: CGFloat = 52
         /// The unit a form's text area counts its minimum height in, so it scales with the interface.
         static let textAreaUnit: CGFloat = 44
@@ -489,6 +493,13 @@ enum Theme {
         static let roomCardShadow = adaptive(
             dark: .srgbInk(0, alpha: 0.25), light: .srgbInk(0, alpha: 0.25))
         static let roomCardDot = ramp(dark: 0.25, light: 0.25)
+        static let windowSnapPreviewFill = adaptive(
+            dark: NSColor.controlAccentColor.withAlphaComponent(0.18),
+            light: NSColor.controlAccentColor.withAlphaComponent(0.18))
+        static let windowSnapPreviewStroke = adaptive(
+            dark: NSColor.controlAccentColor.withAlphaComponent(0.80),
+            light: NSColor.controlAccentColor.withAlphaComponent(0.80))
+        /// The pill behind the header of the section a Settings search jumped to.
         static let searchFlash = Color.accentColor.opacity(0.35)
         static let checkerLight = Color(nsColor: .srgbInk(1, alpha: 0.22))
         static let checkerDark = Color(nsColor: .srgbInk(0, alpha: 0.22))

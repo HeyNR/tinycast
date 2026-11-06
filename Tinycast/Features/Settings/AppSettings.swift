@@ -588,6 +588,10 @@ final class AppSettings {
         }
     }
 
+    var windowSnapEnabled: Bool {
+        didSet { defaults.set(windowSnapEnabled, forKey: Key.windowSnapEnabled.rawValue) }
+    }
+
     var windowManagementShowInLauncher: Bool {
         didSet {
             defaults.set(
@@ -896,6 +900,7 @@ final class AppSettings {
         windowManagementShowInLauncher =
             defaults.object(forKey: Key.windowManagementShowInLauncher.rawValue) == nil
             || defaults.bool(forKey: Key.windowManagementShowInLauncher.rawValue)
+        windowSnapEnabled = defaults.bool(forKey: Key.windowSnapEnabled.rawValue)
         // Unset reads as 0, which is the intended default anyway — no gap.
         windowGap = defaults.integer(forKey: Key.windowGap.rawValue)
         windowCycle =

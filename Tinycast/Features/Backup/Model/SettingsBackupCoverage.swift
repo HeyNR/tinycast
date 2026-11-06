@@ -102,6 +102,8 @@ enum SettingsBackupCoverage {
             "Background OCR is an opt-in processing choice on this Mac; a backup must not enable it.",
         AppSettingsKey.snippetsEnabled.rawValue:
             "Doubles as keyword-expansion consent; an import must not enable keystroke listening.",
+        AppSettingsKey.windowSnapEnabled.rawValue:
+            "Grants global mouse monitoring; an import must not enable pointer tracking.",
         AppSettingsKey.extensionPackageManager.rawValue:
             "Names a tool on this Mac; the machine a backup lands on may not have it.",
         AppSettingsKey.extensionCustomSearchPaths.rawValue:

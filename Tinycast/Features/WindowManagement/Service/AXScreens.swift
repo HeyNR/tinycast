@@ -17,6 +17,10 @@ struct AXGeometry {
         CGRect(
             x: rect.origin.x, y: anchorHeight - rect.maxY, width: rect.width, height: rect.height)
     }
+
+    func flip(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x, y: anchorHeight - point.y)
+    }
 }
 
 /// Displays, converted into the AX space the geometry layer works in.

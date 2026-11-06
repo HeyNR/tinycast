@@ -10,16 +10,16 @@ entries and a still-registered shortcut moves nothing.
 
 ## Invariants
 
-- **`WindowPlacementEngine` works exclusively in AX space**, and `AXScreens.AXGeometry` is the only place that
+- **`WindowPlacementEngine` works exclusively in AX space**, and `AXGeometry` is the only place that
   converts — anchored on the **primary** display, never the window's own screen. See
   [Coordinate space](#coordinate-space); getting this wrong is invisible on one monitor and wrong on
   every mixed-size setup.
 - **Nothing in this feature touches `backingScaleFactor`.** All three of `NSScreen.frame`, `visibleFrame`
   and AX coordinates are in points, so mixed-DPI correctness is automatic.
-- **`WindowCommand.swift`, `WindowPlacementEngine.swift`, `WindowActionMemory.swift` and `SpaceGesture.swift`
-  stay Foundation + CoreGraphics and pure** — no AX, no `NSScreen`, no clock (`WindowActionMemory`
-  takes `now` as a parameter, `SpaceGesture` takes `timestamp`). Every `AXUIElement` call and the
-  Cocoa↔AX flip live in `Service/`; every `CGEvent` call lives in `SpaceSwitcher.swift`.
+- **`WindowCommand.swift`, `WindowPlacementEngine.swift`, `WindowActionMemory.swift`,
+  `WindowSnapInteraction.swift` and `SpaceGesture.swift` stay Foundation + CoreGraphics and pure** —
+  no AX or `NSScreen`; clocks arrive as parameters. Every `AXUIElement` call and the Cocoa↔AX flip
+  live in `Service/`; `CGEvent` calls live in `WindowSnapManager.swift` and `SpaceSwitcher.swift`.
 - **`AXWindowAccess` is the one AX layer**, shared by the mover, the layout runner and
   [Navigation](navigation.md)'s window switcher. Its `write` is the size → position → size sequence:
   two copies of it would land a stubborn app two ways.
@@ -39,12 +39,16 @@ entries and a still-registered shortcut moves nothing.
 | `Model/WindowCycle.swift`            | Foundation                   | The three cycling modes a repeat press can run                      |
 | `Model/WindowPlacementEngine.swift`  | Foundation + CoreGraphics    | **Pure.** Every frame the commands produce                          |
 | `Model/WindowActionMemory.swift`     | Foundation + CoreGraphics    | **Pure.** Per-window cycle position and restore point               |
+| `Model/WindowSnapInteraction.swift`  | Foundation + CoreGraphics    | **Pure.** One drag's capture, movement proof, zones and drop        |
 | `Model/SpaceGesture.swift`           | Foundation                   | **Pure.** The Dock-swipe field tables and the IOHID payload bytes   |
-| `Service/AXWindowAccess.swift`       | AppKit + ApplicationServices | `@MainActor`. Every `AXUIElement` call, and the one write sequence  |
+| `Service/AXWindowAccess.swift`       | AppKit + ApplicationServices | AX reads off-main; main-actor targeting and the one write sequence |
 | `Service/AXScreens.swift`            | AppKit + ColorSync           | `@MainActor`. `AXGeometry`, the one coordinate flip                 |
 | `Service/WindowMover.swift`          | AppKit + ApplicationServices | `@MainActor`. Command policy: cycle, restore, fullscreen            |
-| `Service/SpaceSwitcher.swift`        | CoreGraphics                 | `@MainActor`. Every `CGEvent` call and the payload splice           |
+| `Service/WindowSnapManager.swift`    | AppKit                       | `@MainActor`. Mouse event tap, permission lifecycle and snap policy |
+| `Service/SpaceSwitcher.swift`        | CoreGraphics                 | `@MainActor`. Space event encoding and the payload splice           |
 | `Service/WindowTarget.swift`         | AppKit                       | `@MainActor`. Which window a command acts on                        |
+| `UI/WindowSnapPreviewController.swift` | AppKit + SwiftUI           | The click-through preview panel                                    |
+| `UI/WindowSnapPreviewView.swift`     | SwiftUI                      | The preview's themed wash and outline                              |
 | `Model/CustomWindowSize.swift`       | Foundation + CoreGraphics    | **Pure.** A custom size, its units and the frame it resolves to     |
 | `Model/CustomWindowSizeStore.swift`  | Foundation                   | The custom-size library, as JSON in `UserDefaults`                  |
 | `UI/WindowCommandCoordinator.swift`  | AppKit                       | The one funnel from a palette row or a global hotkey                |
@@ -57,11 +61,10 @@ applied in one pass — and **[Rooms](window-rooms.md)**, named sets of windows 
 display you are on while everything else steps back. Both share this feature's switch, its
 Accessibility grant and its gap setting.
 
-The first four compile into `Tests/WindowCommandTests.swift` and `SpaceGesture.swift` compiles into
-`Tests/SpaceGestureTests.swift`, so none of them may gain an AppKit, SwiftUI or `NSScreen`
-dependency, and all must stay pure — `WindowActionMemory` takes `now` as a parameter rather than
-reading a clock. CoreGraphics is needed only because `CGRect`'s `Equatable` conformance lives in that
-overlay rather than in Foundation.
+The first five compile into `Tests/WindowCommandTests.swift` and `SpaceGesture.swift` compiles into
+`Tests/SpaceGestureTests.swift`, so none may gain an AppKit, SwiftUI or `NSScreen` dependency.
+`WindowActionMemory` and `WindowSnapInteraction` take their clocks as parameters. CoreGraphics is
+needed only because `CGRect`'s `Equatable` conformance lives in that overlay rather than Foundation.
 
 Adding a command is four edits in `WindowCommand.swift` (a case in `ID`, plus `name`, `symbol` and
 `group` arms), an arm in `WindowPlacementEngine.placement` or `tileFractions`, and bumping
@@ -71,7 +74,7 @@ a `Group` case and its `title` arm; `ID.allCases` stays in group order.
 ## Coordinate space
 
 **`WindowPlacementEngine` works exclusively in AX space**: global coordinates, top-left origin, +Y pointing
-_down_. `WindowMover.AXGeometry` is the only place that converts to and from Cocoa's bottom-left space.
+_down_. `AXGeometry` is the only place that converts to and from Cocoa's bottom-left space.
 The visible consequence is that Top Half has `minY == visibleFrame.minY`, which the harness asserts
 specifically to stop a bottom-left convention creeping back in.
 
@@ -247,18 +250,55 @@ window already is.
 This mirrors `InjectionTarget` in [Text injection](text-injection.md), which solved the same problem
 for keystrokes: same shape, same `Service/` position, one idea applied twice.
 
+## Dragging to snap
+
+Settings › Window Management › **Drag windows to snap** starts `WindowSnapManager`'s passive
+left-mouse event tap. A dedicated run-loop thread captures immutable event data and exact WindowServer
+geometry until the gesture proves a move or resize, then at most every 50 ms. Its bounded, ordered
+stream tags every sample with a gesture generation, while external app-scoped AX hit testing walks from
+a child control to the exact captured window number. One of our windows comes from that AppKit window
+number and the same `WindowTarget.placeable` filter commands use. The common-mode tap continues
+through AppKit's nested window-drag loop.
+Fullscreen, fixed-size, hidden, transient, minimized and unpositionable windows never enter an
+interaction.
+
+`WindowSnapInteraction` owns the gesture without platform types. It waits for 8 pt of pointer travel,
+then checks that the captured frame moved by more than 2 pt while its size stayed unchanged. After the
+first threshold sample, the classifier polls for movement at most every 50 ms and only in a snap zone.
+Mouse-up recomputes the zone and rechecks an unarmed fast drag, so a resize cannot snap and the
+release is authoritative. Once movement has armed the gesture, a size change from macOS edge tiling
+cannot steal the drop; Tinycast writes the final placement after the native drag completes. Leaving every zone
+hides the preview without losing the captured window.
+
+Zones are measured in the pointer's display frame: the left and right 24 pt strips are halves; the top
+is Maximize, with 140 pt corner spans for the top quarters; the bottom is thirds, with the same corner
+spans for the bottom quarters. The pointer's display is passed explicitly to `WindowPlacementEngine`,
+so crossing displays previews and lands against that display's `visibleFrame`, with the configured gap.
+
+The preview is a click-through, nonactivating panel on every Space. It never becomes key or main and
+therefore cannot become the drag target itself. Monitoring as a whole is gated by Accessibility;
+once running, external windows use AX while our own Notes and app windows are read and written through
+AppKit. Enabling the setting prompts once, then `WindowSnapManager` rechecks trust whenever Tinycast
+becomes active, starting after the user returns from Privacy & Security and stopping immediately if
+the grant was revoked.
+
 ## Applying a placement
 
-`WindowMover.perform(_:target:gap:cycle:wrapsDisplays:keepsProportions:)` is the only entry point.
-`target` is **explicit** because the palette is frontmost when a command dispatches from it —
-`WindowCommandCoordinator` passes a `WindowTarget`, which is either an external app or one of our
-own windows (see [Choosing a target](#choosing-a-target)), and restores focus to it rather than
-dropping it. The own case skips AX and the Accessibility prompt entirely: placing our own window
-needs no grant. It is synchronous: every AX call is a bounded mach round trip capped by a 1s
-messaging timeout, and `await` would only add reentrancy between a held hotkey's repeats. The
-timeout is set on the application element _and again_ on the window element — it is per-element and
-never inherited. The one exception is [leaving fullscreen](#leaving-fullscreen), which has to wait
-out an animation.
+Window commands call `WindowMover.perform(_:target:gap:cycle:wrapsDisplays:keepsProportions:)`.
+`WindowCommandCoordinator` passes an explicit `WindowTarget` because the palette is frontmost at
+dispatch. The target is either an external app or one of our windows, and the coordinator restores
+focus to it (see [Choosing a target](#choosing-a-target)). Drag-to-snap calls
+`perform(_:window:sourceFrame:destinationScreenID:gap:)` with the exact mouse-down window and the
+pointer's release display. Both use the same decide → resolve → write → commit sequence.
+
+The drag path gives `WindowActionMemory` the mouse-down `sourceFrame`, while geometry resolves from the
+window's live post-drag frame. Restore uses that mouse-down frame as its single-level destination.
+Both paths place our own windows through AppKit. Commands on those windows need no Accessibility
+grant, and drag-to-snap uses the grant to start monitoring.
+
+Placement is synchronous, with a 1s messaging timeout on both the application element and the
+window element. The timeout is per-element and never inherited. The synchronous path keeps a held
+hotkey's repeats ordered. [Leaving fullscreen](#leaving-fullscreen) waits for the animation to finish.
 
 The write sequence is **size → position → size**. Whichever single order you pick is wrong in one
 direction: growing first fails when the source display is smaller than the target size, shrinking first
@@ -413,7 +453,8 @@ and every shortcut stays editable afterwards.
   window commands, inside the same section. Custom sizes and their bindings ride in settings backups.
 - **Settings** — `windowManagementEnabled` (off), `windowManagementShowInLauncher` (on), `windowGap`
   (0), `windowCycle` (`.off`), `windowWrapsDisplays` (on) and `windowKeepsProportions` (on). All six
-  ride in settings backups: unlike `snippetsEnabled` they grant no permission class of their own.
+  ride in settings backups. `windowSnapEnabled` (off) is excluded from backups and `settings.json`,
+  so importing settings cannot start global mouse monitoring under an existing Accessibility grant.
 - **Per-command visibility** reuses `VisibilityStore` as-is; clearing a recorded shortcut is how a
   hotkey is disabled, so there is no separate per-command enabled flag. Each command and custom-size
   row carries an alias field, dimmed while its entry is hidden from the launcher. Window commands
@@ -422,13 +463,16 @@ and every shortcut stays editable afterwards.
 
 ## Testing
 
-`Tests/WindowCommandTests.swift` (545 assertions) covers the catalog, the AX-space convention lock,
+`Tests/WindowCommandTests.swift` covers the catalog, the AX-space convention lock,
 tiling on divisible and non-divisible screens, off-origin and negative-coordinate displays, gap
 arithmetic including degenerate values, sizing, the Make Larger/Smaller round trip, nudges, edge
 moves, display moves and wrapping, both cycling modes including the strip walk, its wrap and a run of
-real presses across displays, restore recovery, every `WindowActionMemory` rule, and a fuzz sweep over every
-command × gap × screen × cycle × step × degenerate window frame checking for non-finite output,
-negative dimensions, off-screen results, non-determinism and, at step 0, drift on repeat.
+real presses across displays, restore recovery, and every `WindowActionMemory` rule. Its
+`WindowSnapInteraction` cases cover the movement threshold and poll interval, resize rejection,
+every edge and corner zone, release-time revalidation, cross-display
+destination selection and preservation of the mouse-down source frame. The fuzz sweep checks every
+command × gap × screen × cycle × step × degenerate window frame for non-finite output, negative
+dimensions, off-screen results, non-determinism and, at step 0, drift on repeat.
 
 `Tests/WindowPresetTests.swift` covers the preset tables (no key used twice, a commanding modifier
 on each) and `WindowShortcutPresetPlan`: a fresh apply, a repeat apply, a replaced user key, a
@@ -444,9 +488,9 @@ entry id, unit clamping and conversion, exact frames on every fixture display, g
 arithmetic, the host-display placement, and store CRUD, validation, import sanitising and
 persistence.
 
-Everything runs headless because the layer is pure. `WindowMover` and `SpaceSwitcher` are not compiled
-into either harness and have no automated coverage — the AX and `CGEvent` paths need manual
-verification, particularly:
+The geometry, memory, gesture and event-encoding layers run headless. `WindowMover`,
+`WindowSnapManager`, the preview and `SpaceSwitcher` are not compiled into a harness, so their AppKit,
+AX and `CGEvent` paths need manual verification, particularly:
 
 1. A non-resizable window (System Information) must fail silently, left untouched rather than
    half-moved.
@@ -460,7 +504,13 @@ verification, particularly:
    the next press restarts at ½. Under `.displays` on two monitors, four presses of Left Half must
    visit every half-slot once and return to the first.
 5. Restore on a window Tinycast has never moved, and after a custom size.
-6. **Space switching, on the real desktop with three or more Spaces.** Next and Previous each move
+6. Drag external and Tinycast-owned windows to every edge family on one and two displays; resizing,
+   a click, a transient panel and a fullscreen window must never snap. Restore must return to the
+   mouse-down frame, and granting or revoking Accessibility while Settings is open must start or stop
+   capture after Tinycast becomes active.
+7. Repeat drag-to-snap with macOS's own edge tiling enabled and disabled. Tinycast must preview and
+   write once, without a second native placement fighting the landed frame.
+8. **Space switching, on the real desktop with three or more Spaces.** Next and Previous each move
    exactly one Space with no visible slide, in and out of a fullscreen Space, and a held shortcut does
    not wedge the Dock or land two Spaces at once. A Space switch is not observable until it settles —
    sampling sooner than about three seconds returns mid-transition state that reads as a dropped or
