@@ -76,6 +76,20 @@ Consequences worth knowing:
   enable Hyper in one build at a time so their keyboard owners do not compete. An identical mapping
   already installed by another build is left unowned.
 
+### Persistent local installation
+
+`./Scripts/install-dev.sh` builds the Debug channel with `Tinycast Self-Signed`, verifies its bundle
+identifier and complete nested signature, then atomically replaces `/Applications/Tinycast Dev.app`.
+It keeps the previous copy until the replacement launches, so a broken build rolls back instead of
+leaving no app installed. The fixed bundle identifier, signing identity and path preserve the dev
+channel's settings, Keychain records, login item and TCC grants across rebuilds.
+
+This fork keeps official `main` pristine and carries local features on `codex/window-snapping`.
+`./Scripts/update-fork.sh` fast-forwards `main` from `upstream`, rebases that feature branch, runs the
+full verification bar, installs the signed app and publishes both branches to `origin`. It refuses a
+dirty worktree, unexpected remotes or the wrong starting branch, and stops at a rebase conflict or
+failed check without installing or publishing the feature branch.
+
 ## Editor
 
 Xcode works out of the box and needs nothing here. Everything below is optional, and which editor you
