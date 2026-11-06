@@ -48592,6 +48592,58 @@
         }
       }
     },
+    "Drag a window to a screen edge or corner." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziehe ein Fenster an einen Bildschirmrand oder in eine Ecke."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra una ventana a un borde o una esquina de la pantalla."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faites glisser une fenêtre vers un bord ou un coin de l’écran."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ウインドウを画面の端または隅にドラッグします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "윈도우를 화면 가장자리나 모서리로 드래그합니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arraste uma janela para uma borda ou canto da tela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перетащите окно к краю или в угол экрана."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将窗口拖移到屏幕边缘或角落。"
+          }
+        }
+      }
+    },
     "Drag to move the launcher" : {
       "localizations" : {
         "de" : {
@@ -48640,6 +48692,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拖移以重新定位"
+          }
+        }
+      }
+    },
+    "Drag windows to snap" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster zum Einrasten ziehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastrar ventanas para ajustar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ancrer les fenêtres par glissement"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ドラッグしてウインドウをスナップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "드래그하여 윈도우 스냅"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastar janelas para encaixar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перетаскивать окна для привязки"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拖移窗口以贴靠"
           }
         }
       }

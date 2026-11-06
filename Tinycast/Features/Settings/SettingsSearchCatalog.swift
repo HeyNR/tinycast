@@ -465,6 +465,9 @@ enum SettingsSearchCatalog {
             .windowManagementOptions, "Keep aspect ratio",
             keywords: ["next display", "previous display", "monitor", "scale", "resize"]),
         .init(
+            .windowManagementOptions, "Drag windows to snap",
+            keywords: ["edge", "corner", "tile", "mouse", "preview"]),
+        .init(
             .windowManagementOptions, "Shortcut preset",
             keywords: ["rectangle", "magnet", "spectacle", "defaults", "import", "shortcuts"]),
         .init(

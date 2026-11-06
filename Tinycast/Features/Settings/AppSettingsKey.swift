@@ -53,6 +53,7 @@ enum AppSettingsKey: String, CaseIterable {
     case menuSearchShowsAppleMenu = "menuSearchShowsAppleMenu"
     case windowManagementEnabled = "windowManagementEnabled"
     case windowManagementShowInLauncher = "windowManagementShowInLauncher"
+    case windowSnapEnabled = "windowSnapEnabled"
     case windowGap = "windowManagementGap"
     case windowCycle = "windowManagementCycleMode"
     case windowWrapsDisplays = "windowManagementWrapDisplays"

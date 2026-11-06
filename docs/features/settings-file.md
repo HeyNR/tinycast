@@ -1,6 +1,6 @@
 # Settings file
 
-An opt-in mirror of Tinycast's preferences, the launcher's items and all of window management in
+An opt-in mirror of Tinycast's preferences, the launcher's items and window management settings in
 `~/.config/tinycast/settings.json`, switched on in **Settings → Backup → Settings File**. `UserDefaults`
 stays the store; the file follows it, and an edit made to the file applies at once. The machinery lives
 in `Features/Settings/` (`Model/`, `Service/`, `SettingsFileSchema.swift`), the launcher's part in
@@ -14,8 +14,8 @@ in `Features/Settings/` (`Model/`, `Service/`, `SettingsFileSchema.swift`), the 
 - **Off by default, and only the pane turns it on.** `settingsFileEnabled` has no key in the file and is
   excluded from backups: a file or an import must never switch on something that reads a file.
 - **A capability grant never has a key.** Snippets, Extensions, Calendar access, Auto Join, Camera
-  Preview, Quick Actions, MCP and clipboard text recognition are switched on only in the app, which
-  asks first. `settings-file-test` checks those paths stay absent.
+  Preview, drag-to-snap, Quick Actions, MCP and clipboard text recognition are switched on only in the
+  app, which asks first. `settings-file-test` checks those paths stay absent.
 - **Removing a key ships a migration that strips it.** The import reports a key it no longer knows on
   every launch, until a change made in the app rewrites the file. See [migrations.md](../migrations.md).
 - **`SettingsFileSchema`'s switch is exhaustive.** A new `SettingsFileKey` case fails to build until it
