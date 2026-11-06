@@ -8,10 +8,24 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 IDENTITY="Tinycast Self-Signed"
 DERIVED="build/DerivedData"
 APP="$DERIVED/Build/Products/Debug/Tinycast Dev.app"
+HELPER="$DERIVED/Build/Products/Debug/Tinycast Dev Dictation.app"
 DESTINATION="/Applications/Tinycast Dev.app"
 STAGING="/Applications/.Tinycast Dev.app.installing"
 BACKUP="/Applications/.Tinycast Dev.app.previous"
 EXECUTABLE="$DESTINATION/Contents/MacOS/Tinycast Dev"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+unregister_build_products() {
+    "$LSREGISTER" -u "$APP/Contents/Helpers/Tinycast Dev Dictation.app" \
+        >/dev/null 2>&1 || true
+    "$LSREGISTER" -u "$HELPER" >/dev/null 2>&1 || true
+    "$LSREGISTER" -u "$APP" >/dev/null 2>&1 || true
+}
+
+remove_build_products() {
+    unregister_build_products
+    rm -rf "$APP" "$HELPER"
+}
 
 if ! security find-identity -p codesigning | grep -Fq "\"$IDENTITY\""; then
     echo "✗ '$IDENTITY' code-signing identity not found — follow docs/signing.md §1." >&2
@@ -41,11 +55,13 @@ rm -rf "$STAGING" "$BACKUP"
 ditto "$APP" "$STAGING"
 codesign --verify --deep --strict "$STAGING"
 
-pkill -f "$EXECUTABLE" 2>/dev/null || true
+pkill -f '/Tinycast Dev.app/Contents/MacOS/Tinycast Dev' 2>/dev/null || true
 if [ -e "$DESTINATION" ]; then
     mv "$DESTINATION" "$BACKUP"
 fi
 mv "$STAGING" "$DESTINATION"
+unregister_build_products
+"$LSREGISTER" -f -R -trusted "$DESTINATION"
 
 rollback() {
     echo "✗ The new build did not launch; restoring the previous app." >&2
@@ -69,4 +85,5 @@ done
 [ "$LAUNCHED" = true ] || rollback
 
 rm -rf "$BACKUP"
+remove_build_products
 echo "✓ Installed and launched $DESTINATION"
