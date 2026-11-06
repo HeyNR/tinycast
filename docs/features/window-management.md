@@ -39,6 +39,7 @@ entries and a still-registered shortcut moves nothing.
 | `Model/WindowCycle.swift`            | Foundation                   | The three cycling modes a repeat press can run                      |
 | `Model/WindowPlacementEngine.swift`  | Foundation + CoreGraphics    | **Pure.** Every frame the commands produce                          |
 | `Model/WindowActionMemory.swift`     | Foundation + CoreGraphics    | **Pure.** Per-window cycle position and restore point               |
+| `Model/WindowServerHit.swift`        | Foundation + CoreGraphics    | **Pure.** Exact-or-frontmost WindowServer hit selection             |
 | `Model/WindowSnapInteraction.swift`  | Foundation + CoreGraphics    | **Pure.** One drag's capture, movement proof, zones and drop        |
 | `Model/SpaceGesture.swift`           | Foundation                   | **Pure.** The Dock-swipe field tables and the IOHID payload bytes   |
 | `Service/AXWindowAccess.swift`       | AppKit + ApplicationServices | AX reads off-main; main-actor targeting and the one write sequence |
@@ -255,10 +256,11 @@ for keystrokes: same shape, same `Service/` position, one idea applied twice.
 Settings › Window Management › **Drag windows to snap** starts `WindowSnapManager`'s passive
 left-mouse event tap. A dedicated run-loop thread captures immutable event data and exact WindowServer
 geometry until the gesture proves a move or resize, then at most every 50 ms. Its bounded, ordered
-stream tags every sample with a gesture generation, while external app-scoped AX hit testing walks from
-a child control to the exact captured window number. One of our windows comes from that AppKit window
-number and the same `WindowTarget.placeable` filter commands use. The common-mode tap continues
-through AppKit's nested window-drag loop.
+stream tags every sample with a gesture generation. When an event supplies no window number, the
+frontmost WindowServer row containing the pointer supplies it instead. External app-scoped AX hit
+testing then walks from a child control to that exact captured number. One of our windows comes from
+the same AppKit number and the same `WindowTarget.placeable` filter commands use. The common-mode tap
+continues through AppKit's nested window-drag loop.
 Fullscreen, fixed-size, hidden, transient, minimized and unpositionable windows never enter an
 interaction.
 
@@ -463,14 +465,14 @@ and every shortcut stays editable afterwards.
 
 ## Testing
 
-`Tests/window-command-test.swift` (608 assertions) covers the catalog, the AX-space convention lock,
+`Tests/window-command-test.swift` (610 assertions) covers the catalog, the AX-space convention lock,
 tiling on divisible and non-divisible screens, off-origin and negative-coordinate displays, gap
 arithmetic including degenerate values, sizing, the Make Larger/Smaller round trip, nudges, edge
 moves, display moves and wrapping, both cycling modes including the strip walk, its wrap and a run of
-real presses across displays, restore recovery, and every `WindowActionMemory` rule. Its
-`WindowSnapInteraction` cases cover the movement threshold and poll interval, resize rejection,
-every edge and corner zone, release-time revalidation, cross-display
-destination selection and preservation of the mouse-down source frame. The fuzz sweep checks every
+real presses across displays, restore recovery, and every `WindowActionMemory` rule. Its snap cases
+cover exact and frontmost-fallback WindowServer selection, the movement threshold and poll interval,
+resize rejection, every edge and corner zone, release-time revalidation, cross-display destination
+selection and preservation of the mouse-down source frame. The fuzz sweep checks every
 command × gap × screen × cycle × step × degenerate window frame for non-finite output, negative
 dimensions, off-screen results, non-determinism and, at step 0, drift on repeat.
 
