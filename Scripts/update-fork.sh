@@ -31,7 +31,7 @@ git switch main
 git merge --ff-only upstream/main
 git push origin main
 
-echo "▸ Rebasing $FEATURE_BRANCH…"
+echo "▸ Rebasing ${FEATURE_BRANCH}…"
 git switch "$FEATURE_BRANCH"
 git rebase main
 
