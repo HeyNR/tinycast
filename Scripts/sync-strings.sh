@@ -5,6 +5,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 DERIVED=build/strings
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+remove_build_products() {
+    local app="$DERIVED/Build/Products/Debug/Tinycast Dev.app"
+    local helper="$DERIVED/Build/Products/Debug/Tinycast Dev Dictation.app"
+    "$LSREGISTER" -u "$app/Contents/Helpers/Tinycast Dev Dictation.app" \
+        >/dev/null 2>&1 || true
+    "$LSREGISTER" -u "$helper" >/dev/null 2>&1 || true
+    "$LSREGISTER" -u "$app" >/dev/null 2>&1 || true
+    rm -rf "$app" "$helper"
+}
+trap remove_build_products EXIT
+
 xcodebuild build -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug \
     CODE_SIGNING_ALLOWED=NO -derivedDataPath "$DERIVED" -quiet
 
