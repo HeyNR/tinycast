@@ -24,14 +24,20 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -addext "extendedKeyUsage=critical,codeSigning"
 
 # Bundle it as a .p12 (the non-empty password keeps `security import` happy).
-openssl pkcs12 -export -inkey /tmp/tc-key.pem -in /tmp/tc-cert.pem \
+openssl pkcs12 -export -legacy -inkey /tmp/tc-key.pem -in /tmp/tc-cert.pem \
   -name "Tinycast Self-Signed" -out /tmp/tc.p12 -passout pass:tinycast
 
-# Import into the login keychain so codesign can use it without prompting.
+# Import with private-key access restricted to Apple's codesign tool.
 security import /tmp/tc.p12 -k ~/Library/Keychains/login.keychain-db \
-  -P tinycast -A -T /usr/bin/codesign
+  -P tinycast -T /usr/bin/codesign
 
-rm -f /tmp/tc-key.pem /tmp/tc-cert.pem /tmp/tc.p12
+# Trust the self-signed certificate for code signing, not TLS or other policies.
+security find-certificate -p -c "Tinycast Self-Signed" \
+  ~/Library/Keychains/login.keychain-db > /tmp/tc-public.pem
+security add-trusted-cert -r trustRoot -p codeSign \
+  -k ~/Library/Keychains/login.keychain-db /tmp/tc-public.pem
+
+rm -f /tmp/tc-key.pem /tmp/tc-cert.pem /tmp/tc.p12 /tmp/tc-public.pem
 ```
 
 Verify it's there:
