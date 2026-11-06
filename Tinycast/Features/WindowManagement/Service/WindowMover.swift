@@ -4,6 +4,11 @@ import AppKit
 /// Applies window commands over AX. See docs/features/window-management.md#applying-a-placement.
 @MainActor
 final class WindowMover {
+    enum CapturedWindow {
+        case external(AXWindowAccess.HitWindow)
+        case own(NSWindow)
+    }
+
     /// `CFEqual`/`CFHash` are the supported identity; the pid separates two processes' elements.
     private struct ExternalKey: Hashable {
         let pid: pid_t
@@ -126,11 +131,12 @@ final class WindowMover {
         let screens: [WindowPlacementEngine.Screen]
 
         init?(of surface: Surface) {
-            let geometry = AXGeometry(screens: NSScreen.screens)
+            let nativeScreens = NSScreen.screens
+            let geometry = AXGeometry(screens: nativeScreens)
             guard let frame = surface.frame(in: geometry) else { return nil }
             self.geometry = geometry
             self.frame = frame
-            screens = AXScreens.converted(NSScreen.screens, geometry: geometry)
+            screens = AXScreens.converted(nativeScreens, geometry: geometry)
         }
     }
 
@@ -216,6 +222,29 @@ final class WindowMover {
         }
     }
 
+    @discardableResult
+    func perform(
+        _ command: WindowCommand.ID, window: CapturedWindow, sourceFrame: CGRect,
+        destinationScreenID: Int, gap: CGFloat
+    ) -> Bool {
+        guard WindowCommandCatalog.command(id: command)?.kind == .geometry,
+            let focused = validatedWindow(window), !focused.surface.isFullScreen,
+            let snapshot = Snapshot(of: focused.surface),
+            let host = WindowPlacementEngine.screen(containing: sourceFrame, in: snapshot.screens)
+        else { return false }
+        fullScreenTransitions.removeValue(forKey: focused.key)?.cancel()
+        return apply(
+            focused, command: command, gap: gap,
+            decision: .afterUserMove(sourceFrame: sourceFrame, screenID: host.id),
+            snapshot: snapshot, now: Date(), endsFullScreen: false, requiresResize: true
+        ) { current, screens, _ in
+            WindowPlacementEngine.placement(
+                for: WindowPlacementEngine.Input(
+                    command: command, windowFrame: current, screens: screens, gap: gap,
+                    destinationScreenID: destinationScreenID))
+        }
+    }
+
     /// Applies `size` to `target`'s focused window; Restore undoes it like any command.
     @discardableResult
     func perform(_ size: CustomWindowSize, target: WindowTarget?, gap: CGFloat) -> Bool {
@@ -249,6 +278,20 @@ final class WindowMover {
                 key: .external(ExternalKey(pid: app.processIdentifier, element: window)))
         case nil:
             return nil
+        }
+    }
+
+    private func validatedWindow(_ captured: CapturedWindow) -> FocusedWindow? {
+        switch captured {
+        case .own(let window):
+            guard WindowTarget.placeable(window) != nil else { return nil }
+            return FocusedWindow(surface: .own(window), key: .own(ObjectIdentifier(window)))
+        case .external(let hit):
+            guard AXWindowAccess.prepareForPlacement(hit) else { return nil }
+            let application = AXWindowAccess.application(for: hit.pid)
+            return FocusedWindow(
+                surface: .external(application: application, window: hit.element),
+                key: .external(ExternalKey(pid: hit.pid, element: hit.element)))
         }
     }
 
@@ -299,7 +342,7 @@ final class WindowMover {
     private func apply(
         _ focused: FocusedWindow, command: WindowCommand.ID?, gap: CGFloat,
         decision: WindowActionMemory<WindowKey>.Decision, snapshot: Snapshot, now: Date,
-        endsFullScreen: Bool, resolve: Resolver
+        endsFullScreen: Bool, requiresResize: Bool = false, resolve: Resolver
     ) -> Bool {
         let surface = focused.surface
         let current = snapshot.frame
@@ -309,6 +352,7 @@ final class WindowMover {
         // Checked before any write, so an unpositionable window is left untouched.
         guard surface.canMove else { return false }
         let canResize = placement.resizes && surface.canResize
+        guard !requiresResize || canResize else { return false }
 
         let destination = screens.first { $0.id == placement.screenID }
         let canvas = destination.map {
@@ -390,9 +434,9 @@ final class WindowMover {
             if window.styleMask.contains(.fullScreen) != wanted { window.toggleFullScreen(nil) }
             return .sent
         case .external(_, let window):
-            if AXWindowAccess.isSettable(AXWindowAccess.fullScreenAttribute as String, on: window) {
+            if AXWindowAccess.isSettable(AXWindowAccess.fullScreenAttribute, on: window) {
                 let result = AXUIElementSetAttributeValue(
-                    window, AXWindowAccess.fullScreenAttribute,
+                    window, AXWindowAccess.fullScreenAttribute as CFString,
                     wanted ? kCFBooleanTrue : kCFBooleanFalse)
                 // No button after a failed write: a window that flipped anyway would flip back.
                 return result == .success ? .sent : .unconfirmed

@@ -32,6 +32,12 @@ struct WindowActionMemory<Key: Hashable> {
         var canRestore: Bool
         /// Set only when the window still sits exactly where a tile command left it.
         var lastTileCommand: WindowCommand.ID?
+
+        static func afterUserMove(sourceFrame: CGRect, screenID: Int) -> Self {
+            Self(
+                step: 0, originScreenID: screenID, restoreFrame: sourceFrame,
+                restoresFullScreen: false, canRestore: true, lastTileCommand: nil)
+        }
     }
 
     /// Tolerance for "still the frame we left it at": subpixel drift in, a real drag out.

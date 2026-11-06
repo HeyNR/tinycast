@@ -108,10 +108,208 @@ struct WindowCommandTests {
         testDisplayCycle()
         testRestore()
         testMemory()
+        testSnapInteraction()
         testFuzz()
 
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
+    }
+
+    // MARK: - Drag to snap
+
+    static func testSnapInteraction() {
+        let zones: [(CGPoint, WindowCommand.ID?)] = [
+            (CGPoint(x: 0, y: 0), .topLeftQuarter),
+            (CGPoint(x: 1439, y: 0), .topRightQuarter),
+            (CGPoint(x: 0, y: 899), .bottomLeftQuarter),
+            (CGPoint(x: 1439, y: 899), .bottomRightQuarter),
+            (CGPoint(x: 0, y: 450), .leftHalf),
+            (CGPoint(x: 1439, y: 450), .rightHalf),
+            (CGPoint(x: 720, y: 0), .maximize),
+            (CGPoint(x: 300, y: 899), .firstThird),
+            (CGPoint(x: 720, y: 899), .centerThird),
+            (CGPoint(x: 1100, y: 899), .lastThird),
+            (CGPoint(x: 720, y: 450), nil)
+        ]
+        let classifier = WindowSnapInteraction<String>()
+        for (point, command) in zones {
+            expect(
+                classifier.target(at: point, screens: [mainScreen])?.command == command,
+                "snap zone at \(point) resolves to \(String(describing: command))")
+        }
+        expect(
+            classifier.target(at: CGPoint(x: 140, y: 24), screens: [mainScreen])?.command
+                == .topLeftQuarter,
+            "the corner includes its exact depth and extent boundaries")
+        expect(
+            classifier.target(at: CGPoint(x: 141, y: 24), screens: [mainScreen])?.command
+                == .maximize,
+            "one point beyond the corner extent resolves to the top edge")
+        expect(
+            classifier.target(at: CGPoint(x: 24, y: 450), screens: [mainScreen])?.command
+                == .leftHalf,
+            "the side includes its exact depth boundary")
+
+        let second = WindowPlacementEngine.Screen(
+            id: 2, frame: CGRect(x: -1000, y: -200, width: 1000, height: 800),
+            visibleFrame: CGRect(x: -1000, y: -160, width: 1000, height: 760))
+        let secondTarget = classifier.target(
+            at: CGPoint(x: -500, y: -200), screens: [mainScreen, second])
+        expect(secondTarget?.command == .maximize, "zones use an off-origin display's own bounds")
+        expect(secondTarget?.screenID == second.id, "a zone retains its off-origin display identity")
+
+        var interaction = WindowSnapInteraction<String>()
+        let start = CGPoint(x: 300, y: 300)
+        let source = CGRect(x: 100, y: 100, width: 600, height: 400)
+        var observed = source
+        let clock = Date(timeIntervalSince1970: 1_000)
+
+        var tracking = WindowSnapInteraction<String>()
+        var frameReads = 0
+        tracking.mouseDown(at: start, window: "tracking", frame: source)
+        let belowThreshold = tracking.mouseDragged(
+            to: CGPoint(x: start.x + 7, y: start.y), at: clock, screens: [mainScreen],
+            frameOf: { window in
+                frameReads += 1
+                return window == "tracking" ? source : nil
+            })
+        expect(belowThreshold == nil && frameReads == 0, "sub-threshold motion does not poll")
+        let awaitingMovement = tracking.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock, screens: [mainScreen],
+            frameOf: { _ in
+                frameReads += 1
+                return source
+            })
+        expect(awaitingMovement == nil && frameReads == 1, "the threshold begins movement proof")
+        observed = source.offsetBy(dx: 50, dy: 0)
+        _ = tracking.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock.addingTimeInterval(0.049),
+            screens: [mainScreen],
+            frameOf: { _ in
+                frameReads += 1
+                return observed
+            })
+        expect(frameReads == 1, "tracking polls no faster than every fifty milliseconds")
+        let trackedTarget = tracking.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock.addingTimeInterval(0.051),
+            screens: [mainScreen],
+            frameOf: { _ in
+                frameReads += 1
+                return observed
+            })
+        expect(trackedTarget?.command == .leftHalf, "tracking arms after movement is observed")
+
+        interaction.mouseDown(at: start, window: "window", frame: source)
+        observed.origin.x += 100
+        let target = interaction.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock.addingTimeInterval(0.1),
+            screens: [mainScreen], frameOf: { _ in observed })
+        expect(target?.command == .leftHalf, "origin-only movement arms the edge target")
+
+        var releasedWindow: String?
+        let drop = interaction.mouseUp(
+            at: CGPoint(x: 1439, y: 10), screens: [mainScreen],
+            frameOf: {
+                releasedWindow = $0
+                return observed
+            })
+        expect(releasedWindow == "window", "release rechecks the captured window")
+        expect(drop?.window == "window", "the captured mouse-down window survives to release")
+        expectRect(drop!.sourceFrame, source, "the drop retains the pre-drag frame for Restore")
+        expect(
+            drop?.target.command == .topRightQuarter,
+            "release position, rather than the stale preview, chooses the final target")
+
+        let destination = WindowPlacementEngine.Screen(
+            id: 3, frame: CGRect(x: 1440, y: 0, width: 1000, height: 800),
+            visibleFrame: CGRect(x: 1440, y: 0, width: 1000, height: 760))
+        let boundaryTarget = interaction.target(
+            at: CGPoint(x: 1440, y: 400), screens: [mainScreen, destination])
+        expect(
+            boundaryTarget?.screenID == destination.id && boundaryTarget?.command == .leftHalf,
+            "a shared display boundary belongs to the display that starts there")
+        let explicit = WindowPlacementEngine.placement(
+            for: WindowPlacementEngine.Input(
+                command: .rightHalf, windowFrame: observed, screens: [mainScreen, destination],
+                destinationScreenID: destination.id))
+        expect(
+            explicit?.screenID == destination.id,
+            "pointer-selected display overrides the window host")
+        expectRect(
+            explicit!.frame, CGRect(x: 1940, y: 0, width: 500, height: 760),
+            "the destination display supplies snap geometry")
+        let missingDestination = WindowPlacementEngine.placement(
+            for: WindowPlacementEngine.Input(
+                command: .rightHalf, windowFrame: observed, screens: [mainScreen, destination],
+                destinationScreenID: 999))
+        expect(
+            missingDestination == nil,
+            "a missing pointer-selected display cancels placement")
+
+        interaction.mouseDown(at: start, window: "fast", frame: source)
+        observed = source.offsetBy(dx: 50, dy: 0)
+        let fastDrop = interaction.mouseUp(
+            at: CGPoint(x: 0, y: 450), screens: [mainScreen], frameOf: { _ in observed })
+        expect(fastDrop?.window == "fast", "a fast release can commit without a preview poll")
+        expect(fastDrop?.target.command == .leftHalf, "a fast release uses its release zone")
+
+        interaction.mouseDown(at: start, window: "native", frame: source)
+        observed = source.offsetBy(dx: 50, dy: 0)
+        _ = interaction.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock, screens: [mainScreen],
+            frameOf: { _ in observed })
+        observed.origin = source.origin
+        observed.size.width = 720
+        let nativeDrop = interaction.mouseUp(
+            at: CGPoint(x: 0, y: 450), screens: [mainScreen], frameOf: { _ in observed })
+        expect(nativeDrop?.window == "native", "native tiling after arming cannot steal the drop")
+
+        interaction.mouseDown(at: start, window: "native-fast", frame: source)
+        observed = source
+        _ = interaction.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock, screens: [mainScreen],
+            frameOf: { _ in observed })
+        observed.size.width = 720
+        let provenFastDrop = interaction.mouseUp(
+            at: CGPoint(x: 0, y: 450), screens: [mainScreen], movementWasProven: true,
+            frameOf: { _ in observed })
+        expect(
+            provenFastDrop?.window == "native-fast",
+            "event-time movement proof survives a native resize before release")
+
+        for (name, size) in [
+            ("width", CGSize(width: 603, height: 400)),
+            ("height", CGSize(width: 600, height: 403)),
+            ("both", CGSize(width: 603, height: 403))
+        ] {
+            interaction.mouseDown(at: start, window: name, frame: source)
+            observed = CGRect(origin: CGPoint(x: 200, y: 100), size: size)
+            let resized = interaction.mouseDragged(
+                to: CGPoint(x: 0, y: 450), at: clock, screens: [mainScreen],
+                frameOf: { _ in observed })
+            expect(resized == nil, "a \(name) resize never arms a snap target")
+        }
+
+        interaction.mouseDown(at: start, window: "constrained", frame: source)
+        observed = CGRect(x: 200, y: 100, width: 602, height: 398)
+        let constrained = interaction.mouseDragged(
+            to: CGPoint(x: 0, y: 450), at: clock, screens: [mainScreen],
+            frameOf: { _ in observed })
+        expect(constrained == nil, "a constrained resize cannot arm a snap target")
+
+        let outside = interaction.mouseUp(
+            at: CGPoint(x: -1, y: 450), screens: [mainScreen], frameOf: { _ in observed })
+        expect(outside == nil, "release outside every display cancels the drop")
+        let afterOutside = interaction.mouseUp(
+            at: CGPoint(x: 0, y: 450), screens: [mainScreen], frameOf: { _ in observed })
+        expect(afterOutside == nil, "a cancelled release returns the interaction to idle")
+
+        interaction.mouseDown(at: start, window: "reset", frame: source)
+        observed = source.offsetBy(dx: 100, dy: 0)
+        interaction.reset()
+        let afterReset = interaction.mouseUp(
+            at: CGPoint(x: 0, y: 450), screens: [mainScreen], frameOf: { _ in observed })
+        expect(afterReset == nil, "reset discards the captured gesture")
     }
 
     // MARK: - Catalog
@@ -246,7 +444,7 @@ struct WindowCommandTests {
         var overlapping = false
         for i in quarters.indices {
             for j in quarters.indices where j > i {
-                if !quarters[i].intersection(quarters[j]).isEmpty { overlapping = true }
+                if quarters[i].intersects(quarters[j]) { overlapping = true }
             }
         }
         expect(!overlapping, "quarters never overlap")
@@ -1036,6 +1234,14 @@ struct WindowCommandTests {
         let original = CGRect(x: 100, y: 100, width: 600, height: 400)
 
         var memory = WindowActionMemory<Int>()
+        let dragSource = CGRect(x: 40, y: 50, width: 600, height: 400)
+        let dragDecision = WindowActionMemory<Int>.Decision.afterUserMove(
+            sourceFrame: dragSource, screenID: 7)
+        expectRect(dragDecision.restoreFrame, dragSource, "a user move becomes the restore point")
+        expect(
+            dragDecision.canRestore && dragDecision.originScreenID == 7
+                && dragDecision.lastTileCommand == nil,
+            "a user move starts a fresh non-cycling restore chain")
         var decision = memory.decide(
             key: 1, command: .leftHalf, currentFrame: original, currentScreenID: 1,
             cycleLength: 3, now: clock)

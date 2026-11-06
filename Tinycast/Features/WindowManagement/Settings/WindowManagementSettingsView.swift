@@ -97,6 +97,11 @@ struct WindowManagementSettingsView: View {
                 Text("Off keeps a window's size when it moves to another display.")
             }
 
+            Toggle(isOn: $settings.windowSnapEnabled) {
+                SettingsRowTitle(.windowManagementOptions, "Drag windows to snap")
+                Text("Drag a window to a screen edge or corner.")
+            }
+
             LabeledContent {
                 HStack(spacing: Theme.Spacing.sm) {
                     Picker("Shortcut preset", selection: $chosenPreset) {

@@ -137,6 +137,8 @@ final class AppCore {
     @ObservationIgnored private(set) lazy var windowCommandCoordinator = WindowCommandCoordinator(
         settings: settings, paletteCoordinator: paletteCoordinator, windowMover: windowMover,
         spaceSwitcher: spaceSwitcher, customSizes: customWindowSizes)
+    @ObservationIgnored private(set) lazy var windowSnapManager = WindowSnapManager(
+        settings: settings, mover: windowMover)
     @ObservationIgnored private(set) lazy var customWindowSizeCoordinator =
         CustomWindowSizeCoordinator(
             store: customWindowSizes, settings: settings, appIndex: appIndex, hotKeys: hotKeys,
@@ -322,6 +324,7 @@ final class AppCore {
             }
             customCommandCoordinator.applyCustomCommandsPresence()
             applyWindowCommandsPresence()
+            windowSnapManager.applyEnabled()
             customWindowSizes.onChange = { [weak self] _ in
                 self?.customWindowSizeCoordinator.applyCustomWindowSizesPresence()
             }
@@ -616,6 +619,7 @@ final class AppCore {
         // HID remaps first: they outlive the process.
         hyperKey.prepareForTermination()
         dictationKey.prepareForTermination()
+        windowSnapManager.stop()
         windowLayoutCoordinator.prepareForTermination()
         roomCoordinator.prepareForTermination()
         inputSourceSwitcher.endSession()
@@ -688,6 +692,11 @@ final class AppCore {
         track(
             { _ = $0.automaticallyCheckForUpdates },
             reproject: { $0.updateCoordinator.applyAutomaticChecking() })
+        track(
+            {
+                _ = $0.windowManagementEnabled
+                _ = $0.windowSnapEnabled
+            }, reproject: { $0.windowSnapManager.applyEnabled() })
         track(
             {
                 _ = $0.windowManagementEnabled

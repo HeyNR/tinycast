@@ -53,6 +53,8 @@ enum WindowPlacementEngine {
         var cycle: WindowCycle
         /// The display the chain started on; `nil`, or one since unplugged, means the host.
         var originScreenID: Int?
+        /// An explicit destination for pointer-driven placement; ordinary commands infer it.
+        var destinationScreenID: Int?
         /// Read only by `.restore`.
         var restoreFrame: CGRect?
         /// The tile that last placed this window, so a display move re-derives rather than scales.
@@ -64,6 +66,7 @@ enum WindowPlacementEngine {
         init(
             command: WindowCommand.ID, windowFrame: CGRect, screens: [Screen], gap: CGFloat = 0,
             step: Int = 0, cycle: WindowCycle = .off, originScreenID: Int? = nil,
+            destinationScreenID: Int? = nil,
             restoreFrame: CGRect? = nil, lastTileCommand: WindowCommand.ID? = nil,
             wrapsDisplays: Bool = true, keepsProportions: Bool = true
         ) {
@@ -74,6 +77,7 @@ enum WindowPlacementEngine {
             self.step = step
             self.cycle = cycle
             self.originScreenID = originScreenID
+            self.destinationScreenID = destinationScreenID
             self.restoreFrame = restoreFrame
             self.lastTileCommand = lastTileCommand
             self.wrapsDisplays = wrapsDisplays
@@ -108,7 +112,13 @@ enum WindowPlacementEngine {
 
         if command.kind == .restore { return restorePlacement(input) }
 
-        guard let host = screen(containing: input.windowFrame, in: input.screens),
+        let host: Screen?
+        if let destinationScreenID = input.destinationScreenID {
+            host = input.screens.first { $0.id == destinationScreenID }
+        } else {
+            host = screen(containing: input.windowFrame, in: input.screens)
+        }
+        guard let host,
             host.visibleFrame.width > 0, host.visibleFrame.height > 0
         else { return nil }
 

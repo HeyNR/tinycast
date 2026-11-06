@@ -6,12 +6,18 @@ import AppKit
 /// Every `AXUIElement` call in the feature, so no two callers disagree on what a window is.
 @MainActor
 enum AXWindowAccess {
+    /// AXUIElement is an immutable IPC handle; its calls stay behind this access layer.
+    struct HitWindow: @unchecked Sendable {
+        let pid: pid_t
+        let element: AXUIElement
+    }
     /// A hung target must not stall main for the AX default. Per element, never inherited.
-    static let messagingTimeout: Float = 1
+    nonisolated static let messagingTimeout: Float = 1
+    nonisolated static let hitTestTimeout: Float = 0.1
     /// Slack when checking whether the app honoured the size we asked for.
     static let clampTolerance: CGFloat = 2
 
-    static let fullScreenAttribute = "AXFullScreen" as CFString
+    nonisolated static let fullScreenAttribute = "AXFullScreen"
     static let fullScreenButtonAttribute = "AXFullScreenButton" as CFString
 
     // MARK: - Finding windows
@@ -29,6 +35,41 @@ enum AXWindowAccess {
         return windows(in: application).first(where: isEligible)
     }
 
+    @concurrent nonisolated static func window(
+        at point: CGPoint, in ownerPID: pid_t, matching windowID: CGWindowID
+    ) async -> HitWindow? {
+        var value: AXUIElement?
+        let application = AXUIElementCreateApplication(ownerPID)
+        AXUIElementSetMessagingTimeout(application, hitTestTimeout)
+        guard
+            AXUIElementCopyElementAtPosition(application, Float(point.x), Float(point.y), &value)
+                == .success, var candidate = value
+        else { return nil }
+
+        for _ in 0..<8 {
+            guard !Task.isCancelled else { return nil }
+            var pid: pid_t = 0
+            guard AXUIElementGetPid(candidate, &pid) == .success, pid == ownerPID else { return nil }
+            AXUIElementSetMessagingTimeout(candidate, hitTestTimeout)
+            if isEligible(candidate) {
+                guard self.windowID(of: candidate) == windowID,
+                    !isFullScreen(candidate),
+                    isSettable(kAXPositionAttribute, on: candidate),
+                    isSettable(kAXSizeAttribute, on: candidate)
+                else { return nil }
+                return HitWindow(pid: pid, element: candidate)
+            }
+            guard let parent = element(candidate, kAXParentAttribute) else { return nil }
+            candidate = parent
+        }
+        return nil
+    }
+
+    static func prepareForPlacement(_ hit: HitWindow) -> Bool {
+        AXUIElementSetMessagingTimeout(hit.element, messagingTimeout)
+        return isEligible(hit.element)
+    }
+
     /// Every window the app reports, unfiltered and in its own order.
     static func windows(in application: AXUIElement) -> [AXUIElement] {
         var value: CFTypeRef?
@@ -41,19 +82,22 @@ enum AXWindowAccess {
     }
 
     /// A real, restorable window: not a sheet, popover or minimized one, and it reports geometry.
-    static func isEligible(_ window: AXUIElement) -> Bool {
+    nonisolated static func isEligible(_ window: AXUIElement) -> Bool {
         guard string(window, kAXRoleAttribute) == (kAXWindowRole as String) else { return false }
         if bool(window, kAXMinimizedAttribute) == true { return false }
         return frame(of: window) != nil
     }
 
-    static func isFullScreen(_ window: AXUIElement) -> Bool { fullScreenState(window) == true }
+    nonisolated static func isFullScreen(_ window: AXUIElement) -> Bool {
+        fullScreenState(window) == true
+    }
 
     /// Nil when the window does not answer, as a busy app mid-transition often does not.
-    static func fullScreenState(_ window: AXUIElement) -> Bool? {
+    nonisolated static func fullScreenState(_ window: AXUIElement) -> Bool? {
         var value: CFTypeRef?
         guard
-            AXUIElementCopyAttributeValue(window, fullScreenAttribute, &value) == .success
+            AXUIElementCopyAttributeValue(window, fullScreenAttribute as CFString, &value)
+                == .success
         else { return nil }
         return (value as? Bool) ?? false
     }
@@ -103,7 +147,7 @@ enum AXWindowAccess {
     // MARK: - Window identity
 
     /// The window server's number, which outlives any `AXUIElement`. See window-rooms.md.
-    static func windowID(of window: AXUIElement) -> UInt32? {
+    nonisolated static func windowID(of window: AXUIElement) -> UInt32? {
         guard let copyWindowID else { return nil }
         var id: CGWindowID = 0
         return copyWindowID(window, &id) == .success && id != 0 ? id : nil
@@ -113,7 +157,7 @@ enum AXWindowAccess {
         @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
 
     /// Private, so resolved at run time: a macOS without it degrades to titles, never a crash.
-    private static let copyWindowID: CopyWindowID? = {
+    private nonisolated static let copyWindowID: CopyWindowID? = {
         guard let symbol = dlsym(dlopen(nil, RTLD_NOW), "_AXUIElementGetWindow") else { return nil }
         return unsafeBitCast(symbol, to: CopyWindowID.self)
     }()
@@ -178,7 +222,7 @@ enum AXWindowAccess {
 
     // MARK: - Primitives
 
-    static func frame(of window: AXUIElement) -> CGRect? {
+    nonisolated static func frame(of window: AXUIElement) -> CGRect? {
         guard let origin = point(window, kAXPositionAttribute),
             let size = size(window, kAXSizeAttribute)
         else { return nil }
@@ -198,21 +242,21 @@ enum AXWindowAccess {
         return AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value) == .success
     }
 
-    static func point(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
+    nonisolated static func point(_ element: AXUIElement, _ attribute: String) -> CGPoint? {
         guard let value = axValue(element, attribute, type: .cgPoint) else { return nil }
         var point = CGPoint.zero
         guard AXValueGetValue(value, .cgPoint, &point) else { return nil }
         return point
     }
 
-    static func size(_ element: AXUIElement, _ attribute: String) -> CGSize? {
+    nonisolated static func size(_ element: AXUIElement, _ attribute: String) -> CGSize? {
         guard let value = axValue(element, attribute, type: .cgSize) else { return nil }
         var size = CGSize.zero
         guard AXValueGetValue(value, .cgSize, &size) else { return nil }
         return size
     }
 
-    static func axValue(
+    nonisolated static func axValue(
         _ element: AXUIElement, _ attribute: String, type: AXValueType
     ) -> AXValue? {
         var value: CFTypeRef?
@@ -226,7 +270,7 @@ enum AXWindowAccess {
         return AXValueGetType(axValue) == type ? axValue : nil
     }
 
-    static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+    nonisolated static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
         guard
             AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
@@ -237,21 +281,21 @@ enum AXWindowAccess {
         return (value as! AXUIElement)
     }
 
-    static func string(_ element: AXUIElement, _ attribute: String) -> String? {
+    nonisolated static func string(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
         else { return nil }
         return value as? String
     }
 
-    static func bool(_ element: AXUIElement, _ attribute: String) -> Bool? {
+    nonisolated static func bool(_ element: AXUIElement, _ attribute: String) -> Bool? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
         else { return nil }
         return value as? Bool
     }
 
-    static func isSettable(_ attribute: String, on element: AXUIElement) -> Bool {
+    nonisolated static func isSettable(_ attribute: String, on element: AXUIElement) -> Bool {
         var settable = DarwinBoolean(false)
         guard
             AXUIElementIsAttributeSettable(element, attribute as CFString, &settable) == .success
