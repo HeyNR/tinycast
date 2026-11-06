@@ -14,25 +14,41 @@ final class WindowSnapManager {
 
         fileprivate nonisolated static func capture(
             type: CGEventType, event: CGEvent, windowNumber: Int,
-            generation: UInt64, snapshot: (pid: pid_t, frame: CGRect)?, movementProven: Bool
+            generation: UInt64, snapshot: WindowServerHit?, movementProven: Bool
         ) -> Self {
             return Self(
                 typeRaw: type.rawValue, point: event.location, timestamp: event.timestamp,
                 generation: generation, windowNumber: windowNumber,
-                ownerPID: snapshot?.pid, sourceFrame: snapshot?.frame,
+                ownerPID: snapshot?.ownerPID, sourceFrame: snapshot?.frame,
                 movementProven: movementProven)
         }
 
         fileprivate nonisolated static func windowSnapshot(
-            number: Int
-        ) -> (pid: pid_t, frame: CGRect)? {
+            reportedNumber: Int, at point: CGPoint
+        ) -> WindowServerHit? {
+            WindowServerHit.resolve(
+                reportedWindowNumber: reportedNumber, at: point,
+                exact: { number in
+                    guard
+                        let rows = CGWindowListCopyWindowInfo(
+                            [.optionOnScreenAboveWindow, .optionIncludingWindow],
+                            CGWindowID(number)) as? [[String: Any]]
+                    else { return nil }
+                    return rows.compactMap(windowHit).first { $0.windowNumber == number }
+                },
+                frontToBack: {
+                    guard
+                        let rows = CGWindowListCopyWindowInfo(
+                            .optionOnScreenOnly, CGWindowID(kCGNullWindowID))
+                            as? [[String: Any]]
+                    else { return [] }
+                    return rows.compactMap(windowHit)
+                })
+        }
+
+        private nonisolated static func windowHit(_ row: [String: Any]) -> WindowServerHit? {
             guard
-                let rows = CGWindowListCopyWindowInfo(
-                    [.optionOnScreenAboveWindow, .optionIncludingWindow], CGWindowID(number))
-                    as? [[String: Any]],
-                let row = rows.first(where: {
-                    ($0[kCGWindowNumber as String] as? Int) == number
-                }),
+                let number = row[kCGWindowNumber as String] as? Int,
                 let owner = row[kCGWindowOwnerPID as String] as? NSNumber,
                 let boundsValue = row[kCGWindowBounds as String]
             else { return nil }
@@ -41,7 +57,8 @@ final class WindowSnapManager {
             guard CGRectMakeWithDictionaryRepresentation(bounds as CFDictionary, &frame) else {
                 return nil
             }
-            return (owner.int32Value, frame)
+            return WindowServerHit(
+                windowNumber: number, ownerPID: owner.int32Value, frame: frame)
         }
     }
 
@@ -50,7 +67,7 @@ final class WindowSnapManager {
         let stream: AsyncStream<TapEvent>
         private let continuation: AsyncStream<TapEvent>.Continuation
         private var windowNumber = 0
-        private var lastSnapshot: (pid: pid_t, frame: CGRect)?
+        private var lastSnapshot: WindowServerHit?
         private var lastSnapshotTimestamp: UInt64 = 0
         private var sampledDrag = false
         private var generation: UInt64 = 0
@@ -70,16 +87,18 @@ final class WindowSnapManager {
         nonisolated func captureAndYield(type: CGEventType, event: CGEvent) {
             if type == .leftMouseDown {
                 generation &+= 1
-                windowNumber = Int(
+                let reportedNumber = Int(
                     event.getIntegerValueField(
                         .mouseEventWindowUnderMousePointerThatCanHandleThisEvent))
+                lastSnapshot = TapEvent.windowSnapshot(
+                    reportedNumber: reportedNumber, at: event.location)
+                windowNumber = lastSnapshot?.windowNumber ?? 0
                 pressLock.lock()
                 latestPressGeneration[windowNumber] = generation
                 pressLock.unlock()
                 sampledDrag = false
-                lastSnapshot = nil
-                lastSnapshotTimestamp = 0
-                gestureSource = nil
+                lastSnapshotTimestamp = event.timestamp
+                gestureSource = lastSnapshot?.frame
                 movementProven = false
                 resizeProven = false
             }
@@ -90,10 +109,10 @@ final class WindowSnapManager {
                     && (!sampledDrag || (!movementProven && !resizeProven)
                         || event.timestamp < lastSnapshotTimestamp
                         || event.timestamp - lastSnapshotTimestamp >= 50_000_000))
-            if shouldSample, windowNumber > 0 {
-                lastSnapshot = TapEvent.windowSnapshot(number: windowNumber)
+            if shouldSample, windowNumber > 0, type != .leftMouseDown {
+                lastSnapshot = TapEvent.windowSnapshot(
+                    reportedNumber: windowNumber, at: event.location)
                 lastSnapshotTimestamp = event.timestamp
-                if type == .leftMouseDown { gestureSource = lastSnapshot?.frame }
                 if type == .leftMouseDragged {
                     sampledDrag = true
                     classifyMovement(lastSnapshot?.frame)
