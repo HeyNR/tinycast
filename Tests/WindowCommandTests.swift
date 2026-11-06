@@ -108,6 +108,7 @@ struct WindowCommandTests {
         testDisplayCycle()
         testRestore()
         testMemory()
+        testSnapCapture()
         testSnapInteraction()
         testFuzz()
 
@@ -116,6 +117,37 @@ struct WindowCommandTests {
     }
 
     // MARK: - Drag to snap
+
+    static func testSnapCapture() {
+        let point = CGPoint(x: 300, y: 20)
+        let back = WindowServerHit(
+            windowNumber: 20, ownerPID: 2,
+            frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        let front = WindowServerHit(
+            windowNumber: 10, ownerPID: 1,
+            frame: CGRect(x: 100, y: 0, width: 500, height: 400))
+        let outside = WindowServerHit(
+            windowNumber: 5, ownerPID: 3,
+            frame: CGRect(x: 900, y: 0, width: 400, height: 400))
+
+        let fallback = WindowServerHit.resolve(
+            reportedWindowNumber: 0, at: point, exact: { _ in nil },
+            frontToBack: { [outside, front, back] })
+        expect(
+            fallback == front,
+            "a missing event window number falls back to the frontmost window under the pointer")
+
+        var listed = false
+        let exact = WindowServerHit.resolve(
+            reportedWindowNumber: 10, at: point, exact: { number in
+                number == front.windowNumber ? front : nil
+            },
+            frontToBack: {
+                listed = true
+                return [back]
+            })
+        expect(exact == front && !listed, "an exact event window avoids the fallback window list")
+    }
 
     static func testSnapInteraction() {
         let zones: [(CGPoint, WindowCommand.ID?)] = [
