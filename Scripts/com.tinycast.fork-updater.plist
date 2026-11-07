@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tinycast.fork-updater</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACED_BY_INSTALLER</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>REPLACED_BY_INSTALLER</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>21600</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>REPLACED_BY_INSTALLER</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACED_BY_INSTALLER</string>
+</dict>
+</plist>
