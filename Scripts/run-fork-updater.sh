@@ -3,7 +3,7 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.volta/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 STATE="$HOME/Library/Application Support/Tinycast Fork Updater"
 LOCK="$STATE/running"
@@ -21,8 +21,8 @@ if git switch "$feature_branch" && /usr/bin/caffeinate -i ./Scripts/update-fork.
     result="success"
     status=0
 else
-    result="failed"
     status=$?
+    result="failed"
 fi
 finished="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 temporary="$STATUS.tmp"
