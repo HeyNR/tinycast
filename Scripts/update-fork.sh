@@ -27,13 +27,25 @@ esac
 
 echo "▸ Updating the pristine main branch…"
 git fetch upstream main
+git fetch origin main "$FEATURE_BRANCH"
+if [ "$(git rev-parse main)" = "$(git rev-parse upstream/main)" ] \
+    && git merge-base --is-ancestor main "$FEATURE_BRANCH" \
+    && [ "$(git rev-parse "$FEATURE_BRANCH")" = "$(git rev-parse "origin/$FEATURE_BRANCH")" ]
+then
+    echo "✓ $FEATURE_BRANCH already contains the latest upstream main."
+    exit 0
+fi
 git switch main
 git merge --ff-only upstream/main
 git push origin main
 
 echo "▸ Rebasing ${FEATURE_BRANCH}…"
 git switch "$FEATURE_BRANCH"
-git rebase main
+if ! git rebase main; then
+    git rebase --abort
+    echo "✗ Upstream conflicts need a manual rebase." >&2
+    exit 1
+fi
 
 echo "▸ Verifying the rebased fork…"
 ./Scripts/run-tests.sh
