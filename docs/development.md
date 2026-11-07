@@ -90,6 +90,11 @@ full verification bar, installs the signed app and publishes both branches to `o
 dirty worktree, unexpected remotes or the wrong starting branch, and stops at a rebase conflict or
 failed check without installing or publishing the feature branch.
 
+`./Scripts/install-fork-updater.sh` installs a per-user LaunchAgent that runs the same guarded update
+at login and every six hours. An unchanged upstream exits after the two fetches. The agent records its
+last result in `~/Library/Application Support/Tinycast Fork Updater/last-run.txt`, with output under
+`~/Library/Logs/Tinycast Fork Updater*.log`. Run the installer with `--uninstall` to remove it.
+
 ## Editor
 
 Xcode works out of the box and needs nothing here. Everything below is optional, and which editor you
