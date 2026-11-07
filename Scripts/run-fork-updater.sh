@@ -16,7 +16,8 @@ fi
 trap 'rmdir "$LOCK"' EXIT
 
 started="$(date '+%Y-%m-%d %H:%M:%S %Z')"
-if /usr/bin/caffeinate -i ./Scripts/update-fork.sh; then
+feature_branch="${TINYCAST_FEATURE_BRANCH:-codex/window-snapping}"
+if git switch "$feature_branch" && /usr/bin/caffeinate -i ./Scripts/update-fork.sh; then
     result="success"
     status=0
 else
