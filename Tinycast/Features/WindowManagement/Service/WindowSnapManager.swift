@@ -222,6 +222,7 @@ final class WindowSnapManager {
     private var tapRunner: TapRunner?
     private var tapBridge: TapBridge?
     private var tapTask: Task<Void, Never>?
+    private var monitorRetryTask: Task<Void, Never>?
     private var activationToken: NotificationToken?
     private var dropTask: Task<Void, Never>?
     private var monitorLifecycle = WindowSnapMonitorLifecycle()
@@ -265,6 +266,10 @@ final class WindowSnapManager {
     }
 
     private func setMonitoringEnabled(_ enabled: Bool) {
+        if !enabled {
+            monitorRetryTask?.cancel()
+            monitorRetryTask = nil
+        }
         guard let action = monitorLifecycle.setEnabled(enabled) else { return }
         perform(action)
     }
@@ -273,6 +278,18 @@ final class WindowSnapManager {
         switch action {
         case .start: startMonitoring()
         case .stop: stopMonitoring()
+        case .retry: scheduleMonitorRetry()
+        }
+    }
+
+    private func scheduleMonitorRetry() {
+        guard monitorRetryTask == nil else { return }
+        monitorRetryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+            self.monitorRetryTask = nil
+            guard let action = self.monitorLifecycle.retryReady() else { return }
+            self.perform(action)
         }
     }
 
@@ -311,7 +328,7 @@ final class WindowSnapManager {
         interaction.reset()
         interactionGeneration = nil
         preview?.hide()
-        if monitorLifecycle.didEnd() == .start { startMonitoring() }
+        if let action = monitorLifecycle.didEnd() { perform(action) }
     }
 
     private func tapWasDisabled() {
@@ -321,6 +338,7 @@ final class WindowSnapManager {
 
     private func handle(_ event: TapEvent, bridge: TapBridge) async {
         guard !Task.isCancelled, tapBridge === bridge, monitorLifecycle.acceptsEvents else { return }
+        monitorLifecycle.didReceiveEvent()
         guard let type = CGEventType(rawValue: event.typeRaw) else { return }
         let nativeScreens = NSScreen.screens
         let geometry = AXGeometry(screens: nativeScreens)
