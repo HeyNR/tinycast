@@ -127,6 +127,18 @@ struct WindowCommandTests {
             lifecycle.setEnabled(true) == nil,
             "re-enabling waits for the old snap monitor to finish stopping")
         expect(lifecycle.didEnd() == .start, "the stopped monitor restarts when still enabled")
+
+        var failedStart = WindowSnapMonitorLifecycle()
+        expect(failedStart.setEnabled(true) == .start, "enabling starts a fresh snap monitor")
+        expect(
+            failedStart.didEnd() == .retry,
+            "an enabled snap monitor schedules recovery when its event tap ends")
+        expect(failedStart.retryReady() == .start, "the recovery starts a replacement monitor")
+        for attempt in 2...3 {
+            expect(failedStart.didEnd() == .retry, "startup failure \(attempt) schedules recovery")
+            expect(failedStart.retryReady() == .start, "recovery \(attempt) starts a replacement")
+        }
+        expect(failedStart.didEnd() == nil, "repeated startup failures stop retrying")
     }
 
     static func testSnapCapture() {
