@@ -453,6 +453,7 @@ run WindowCommandTests     Tinycast/Features/WindowManagement/Model/WindowComman
                            Tinycast/Features/WindowManagement/Model/WindowPlacementEngine.swift \
                            Tinycast/Features/WindowManagement/Model/WindowActionMemory.swift \
                            Tinycast/Features/WindowManagement/Model/WindowServerHit.swift \
+                           Tinycast/Features/WindowManagement/Model/WindowSnapMonitorLifecycle.swift \
                            Tinycast/Features/WindowManagement/Model/WindowSnapInteraction.swift \
                            Tinycast/Platform/LocalizedResource.swift
 run WindowPresetTests      Tinycast/Features/WindowManagement/Model/WindowCommand.swift \

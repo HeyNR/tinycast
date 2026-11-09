@@ -176,7 +176,6 @@ final class WindowSnapManager {
                 CFRunLoopStop(runLoop)
                 CFRunLoopWakeUp(runLoop)
             }
-            bridge.finish()
         }
 
         private func run() {
@@ -225,6 +224,7 @@ final class WindowSnapManager {
     private var tapTask: Task<Void, Never>?
     private var activationToken: NotificationToken?
     private var dropTask: Task<Void, Never>?
+    private var monitorLifecycle = WindowSnapMonitorLifecycle()
 
     init(settings: AppSettings, mover: WindowMover) {
         self.settings = settings
@@ -232,18 +232,18 @@ final class WindowSnapManager {
     }
 
     func applyEnabled() {
-        stopMonitoring()
         guard settings.windowManagementEnabled, settings.windowSnapEnabled else {
             activationToken = nil
+            setMonitoringEnabled(false)
             return
         }
         observeActivation()
-        if Permissions.ensureAccessibility() { startMonitoring() }
+        setMonitoringEnabled(Permissions.ensureAccessibility())
     }
 
     func stop() {
-        stopMonitoring()
         activationToken = nil
+        setMonitoringEnabled(false)
     }
 
     private func observeActivation() {
@@ -261,10 +261,18 @@ final class WindowSnapManager {
             stop()
             return
         }
-        if Permissions.isAccessibilityTrusted() {
-            startMonitoring()
-        } else {
-            stopMonitoring()
+        setMonitoringEnabled(Permissions.isAccessibilityTrusted())
+    }
+
+    private func setMonitoringEnabled(_ enabled: Bool) {
+        guard let action = monitorLifecycle.setEnabled(enabled) else { return }
+        perform(action)
+    }
+
+    private func perform(_ action: WindowSnapMonitorLifecycle.Action) {
+        switch action {
+        case .start: startMonitoring()
+        case .stop: stopMonitoring()
         }
     }
 
@@ -280,15 +288,7 @@ final class WindowSnapManager {
                 guard !Task.isCancelled else { return }
                 await self?.handle(event, bridge: bridge)
             }
-            guard let self, self.tapBridge === bridge else { return }
-            self.tapRunner = nil
-            self.tapBridge = nil
-            self.tapTask = nil
-            self.dropTask?.cancel()
-            self.dropTask = nil
-            self.interaction.reset()
-            self.interactionGeneration = nil
-            self.preview?.hide()
+            self?.monitorDidEnd(bridge: bridge)
         }
     }
 
@@ -296,22 +296,31 @@ final class WindowSnapManager {
         dropTask?.cancel()
         dropTask = nil
         tapRunner?.stop()
-        tapRunner = nil
-        tapBridge = nil
-        tapTask?.cancel()
-        tapTask = nil
         interaction.reset()
         interactionGeneration = nil
         preview?.hide()
     }
 
+    private func monitorDidEnd(bridge: TapBridge) {
+        guard tapBridge === bridge else { return }
+        tapRunner = nil
+        tapBridge = nil
+        tapTask = nil
+        dropTask?.cancel()
+        dropTask = nil
+        interaction.reset()
+        interactionGeneration = nil
+        preview?.hide()
+        if monitorLifecycle.didEnd() == .start { startMonitoring() }
+    }
+
     private func tapWasDisabled() {
-        stopMonitoring()
-        startMonitoring()
+        guard let action = monitorLifecycle.restart() else { return }
+        perform(action)
     }
 
     private func handle(_ event: TapEvent, bridge: TapBridge) async {
-        guard !Task.isCancelled, tapBridge === bridge else { return }
+        guard !Task.isCancelled, tapBridge === bridge, monitorLifecycle.acceptsEvents else { return }
         guard let type = CGEventType(rawValue: event.typeRaw) else { return }
         let nativeScreens = NSScreen.screens
         let geometry = AXGeometry(screens: nativeScreens)

@@ -108,6 +108,7 @@ struct WindowCommandTests {
         testDisplayCycle()
         testRestore()
         testMemory()
+        testSnapMonitorLifecycle()
         testSnapCapture()
         testSnapInteraction()
         testFuzz()
@@ -117,6 +118,16 @@ struct WindowCommandTests {
     }
 
     // MARK: - Drag to snap
+
+    static func testSnapMonitorLifecycle() {
+        var lifecycle = WindowSnapMonitorLifecycle()
+        expect(lifecycle.setEnabled(true) == .start, "enabling starts the snap monitor")
+        expect(lifecycle.setEnabled(false) == .stop, "disabling stops the snap monitor")
+        expect(
+            lifecycle.setEnabled(true) == nil,
+            "re-enabling waits for the old snap monitor to finish stopping")
+        expect(lifecycle.didEnd() == .start, "the stopped monitor restarts when still enabled")
+    }
 
     static func testSnapCapture() {
         let point = CGPoint(x: 300, y: 20)

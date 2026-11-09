@@ -41,6 +41,7 @@ entries and a still-registered shortcut moves nothing.
 | `Model/WindowActionMemory.swift`     | Foundation + CoreGraphics    | **Pure.** Per-window cycle position and restore point               |
 | `Model/WindowServerHit.swift`        | Foundation + CoreGraphics    | **Pure.** Exact-or-frontmost WindowServer hit selection             |
 | `Model/WindowSnapInteraction.swift`  | Foundation + CoreGraphics    | **Pure.** One drag's capture, movement proof, zones and drop        |
+| `Model/WindowSnapMonitorLifecycle.swift` | Foundation              | **Pure.** Event-tap start, stop and restart ordering                 |
 | `Model/SpaceGesture.swift`           | Foundation                   | **Pure.** The Dock-swipe field tables and the IOHID payload bytes   |
 | `Service/AXWindowAccess.swift`       | AppKit + ApplicationServices | AX reads off-main; main-actor targeting and the one write sequence |
 | `Service/AXScreens.swift`            | AppKit + ColorSync           | `@MainActor`. `AXGeometry`, the one coordinate flip                 |
