@@ -3,6 +3,23 @@ import SwiftUI
 
 @MainActor
 final class WindowSnapPreviewController {
+    private struct Preview: View {
+        private var shape: RoundedRectangle {
+            RoundedRectangle(cornerRadius: Theme.Radius.windowSnapPreview, style: .continuous)
+        }
+
+        var body: some View {
+            shape
+                .fill(Theme.Colors.windowSnapPreviewFill)
+                .overlay {
+                    shape.strokeBorder(
+                        Theme.Colors.windowSnapPreviewStroke,
+                        lineWidth: Theme.Size.windowSnapPreviewStroke)
+                }
+                .accessibilityHidden(true)
+        }
+    }
+
     private final class Panel: NSPanel {
         init() {
             super.init(
@@ -18,7 +35,7 @@ final class WindowSnapPreviewController {
             collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             isReleasedWhenClosed = false
 
-            let host = NSHostingView(rootView: WindowSnapPreviewView())
+            let host = NSHostingView(rootView: Preview())
             host.sizingOptions = []
             contentView = host
         }

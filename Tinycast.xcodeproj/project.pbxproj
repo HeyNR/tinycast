@@ -21,7 +21,6 @@
 		026EC0A6376B11C3C0797503 /* AIChatSplitViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA6A158B37AA1336D7FE9C32 /* AIChatSplitViewController.swift */; };
 		0288221BA580DFA8F5B116B7 /* ExtensionIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F568F2F6EF857274F1A9D8 /* ExtensionIconCache.swift */; };
 		034473B26535154C38E22A28 /* FileIndexSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE19D3AA2CC13A249DF4C92 /* FileIndexSnapshot.swift */; };
-		03A463AED5E620082622850F /* WindowSnapPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C56F2DC5977B218317BBF67 /* WindowSnapPreviewView.swift */; };
 		03C41F6394089BAEC7E630D6 /* ClipboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBF6EF3A2C35F45B82D40968 /* ClipboardView.swift */; };
 		050B0F0221560063469074EF /* AppleShortcutCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439D94674FA1F5020C3AA0E8 /* AppleShortcutCoordinator.swift */; };
 		058EFDE8E2770FAE8B5EC45D /* ModalActionButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E62A0BA3E85C8942167A310 /* ModalActionButtonStyle.swift */; };
@@ -799,7 +798,6 @@
 		E573655220F45E598575FC68 /* MenuTreeNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B528506E4B62440B4863A /* MenuTreeNode.swift */; };
 		E58AB83C608F8BBF99EAEB7E /* QuicklinkListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856F65245B10433A230194E6 /* QuicklinkListView.swift */; };
 		E5DFE5B70598CD2279D6A2AB /* FallbacksSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61D7B06067FB35E7CC6C1E09 /* FallbacksSettingsView.swift */; };
-		E601C1589BEE5A2CCAEDBE02 /* WindowSnapMonitorLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E467A1D92AE4582F2D9410B2 /* WindowSnapMonitorLifecycle.swift */; };
 		E614E06247ED17D38246C834 /* CalcNumberFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FA492C2712A177DB36E565 /* CalcNumberFormat.swift */; };
 		E632895B0FB0526904519AA3 /* ChatPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C9BF041CE9BC1210B33536 /* ChatPreset.swift */; };
 		E633D7EBA2E2EAA3A3E2405D /* SystemActionFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63AEA7984BF00BEDCB7F8EEE /* SystemActionFailure.swift */; };
@@ -1330,7 +1328,6 @@
 		6AF26598BE61F114D5999541 /* NotesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesSettingsView.swift; sourceTree = "<group>"; };
 		6B72293B3B389C529488B6ED /* CalcSubstance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalcSubstance.swift; sourceTree = "<group>"; };
 		6C045C66BB654E4CB407A673 /* AppActionsMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActionsMenu.swift; sourceTree = "<group>"; };
-		6C56F2DC5977B218317BBF67 /* WindowSnapPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapPreviewView.swift; sourceTree = "<group>"; };
 		6C7717F4851345ED38592B1C /* LauncherMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherMatch.swift; sourceTree = "<group>"; };
 		6CEF382DAC52A2A806C072E0 /* EventEditorScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEditorScreen.swift; sourceTree = "<group>"; };
 		6D469F0ACEE4F696616EA39B /* WindowSwitchList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSwitchList.swift; sourceTree = "<group>"; };
@@ -1754,7 +1751,6 @@
 		E2D1CA733FFAEF665D867A45 /* ASCIIKeyboardLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ASCIIKeyboardLayout.swift; sourceTree = "<group>"; };
 		E3EAD167D7B52BCB504D6264 /* DictationTensor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationTensor.swift; sourceTree = "<group>"; };
 		E44875ABECB1F1B648EC90F4 /* SupportWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportWindowView.swift; sourceTree = "<group>"; };
-		E467A1D92AE4582F2D9410B2 /* WindowSnapMonitorLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowSnapMonitorLifecycle.swift; sourceTree = "<group>"; };
 		E475F373557FD3524086CE19 /* MeetingCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCalendar.swift; sourceTree = "<group>"; };
 		E53B9481E7AF078575634387 /* NoteMarkdownEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMarkdownEditing.swift; sourceTree = "<group>"; };
 		E54932083F6BC197453EA0C8 /* UninstallSearchRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallSearchRoot.swift; sourceTree = "<group>"; };
@@ -2941,7 +2937,6 @@
 				2D3EDBA6BB1A16B6330B03B3 /* WindowServerHit.swift */,
 				059EE288BB5EF35F9FB60F43 /* WindowShortcutPreset.swift */,
 				00BEDA550EBF2742CF1485D7 /* WindowSnapInteraction.swift */,
-				E467A1D92AE4582F2D9410B2 /* WindowSnapMonitorLifecycle.swift */,
 			);
 			path = Model;
 			sourceTree = "<group>";
@@ -3172,7 +3167,6 @@
 				8BE58163F028AC3AD537AAC3 /* WindowLayoutCoordinator.swift */,
 				EC895E9AF76C4530E52C34BB /* WindowShortcutPresetCoordinator.swift */,
 				C1A7CD76FC47A2B1ADDBAFB9 /* WindowSnapPreviewController.swift */,
-				6C56F2DC5977B218317BBF67 /* WindowSnapPreviewView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -5015,9 +5009,7 @@
 				7EEA85B9DD11F94115438135 /* WindowShortcutPresetCoordinator.swift in Sources */,
 				C682EF29B4CC280E3FC055FD /* WindowSnapInteraction.swift in Sources */,
 				23D5132AB2320928F910EFC5 /* WindowSnapManager.swift in Sources */,
-				E601C1589BEE5A2CCAEDBE02 /* WindowSnapMonitorLifecycle.swift in Sources */,
 				E2DE46E3FF0D4465077E0D75 /* WindowSnapPreviewController.swift in Sources */,
-				03A463AED5E620082622850F /* WindowSnapPreviewView.swift in Sources */,
 				BD0B60F4203FD2D852377CD1 /* WindowSwitchCoordinator.swift in Sources */,
 				F46DE2571A85FA24BD4E3B3A /* WindowSwitchEntry.swift in Sources */,
 				E8FFCAEE49AC44E4889DAF4D /* WindowSwitchList.swift in Sources */,
