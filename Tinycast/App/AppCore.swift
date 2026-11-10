@@ -324,6 +324,7 @@ final class AppCore {
             }
             customCommandCoordinator.applyCustomCommandsPresence()
             applyWindowCommandsPresence()
+            windowSnapManager.healthTicker = healthTicker
             windowSnapManager.applyEnabled()
             customWindowSizes.onChange = { [weak self] _ in
                 self?.customWindowSizeCoordinator.applyCustomWindowSizesPresence()

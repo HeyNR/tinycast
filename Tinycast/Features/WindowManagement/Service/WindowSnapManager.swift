@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class WindowSnapManager {
+final class WindowSnapManager: HealthCheckable {
     fileprivate struct TapEvent: Sendable {
         let typeRaw: UInt32
         let point: CGPoint
@@ -13,11 +13,11 @@ final class WindowSnapManager {
         let movementProven: Bool
 
         fileprivate nonisolated static func capture(
-            type: CGEventType, event: CGEvent, windowNumber: Int,
+            typeRaw: UInt32, point: CGPoint, timestamp: UInt64, windowNumber: Int,
             generation: UInt64, snapshot: WindowServerHit?, movementProven: Bool
         ) -> Self {
             return Self(
-                typeRaw: type.rawValue, point: event.location, timestamp: event.timestamp,
+                typeRaw: typeRaw, point: point, timestamp: timestamp,
                 generation: generation, windowNumber: windowNumber,
                 ownerPID: snapshot?.ownerPID, sourceFrame: snapshot?.frame,
                 movementProven: movementProven)
@@ -62,7 +62,6 @@ final class WindowSnapManager {
         }
     }
 
-    /// Sampling state is callback-confined; press generations are locked for delayed commits.
     fileprivate final class TapBridge: @unchecked Sendable {
         let stream: AsyncStream<TapEvent>
         private let continuation: AsyncStream<TapEvent>.Continuation
@@ -74,30 +73,25 @@ final class WindowSnapManager {
         private var gestureSource: CGRect?
         private var movementProven = false
         private var resizeProven = false
-        private let pressLock = NSLock()
-        private var latestPressGeneration: [Int: UInt64] = [:]
 
-        nonisolated init() {
+        init() {
             let pair = AsyncStream<TapEvent>.makeStream(
                 bufferingPolicy: .bufferingNewest(256))
             stream = pair.stream
             continuation = pair.continuation
         }
 
-        nonisolated func captureAndYield(type: CGEventType, event: CGEvent) {
+        func captureAndYield(
+            typeRaw: UInt32, point: CGPoint, timestamp: UInt64, reportedWindowNumber: Int
+        ) {
+            guard let type = CGEventType(rawValue: typeRaw) else { return }
             if type == .leftMouseDown {
                 generation &+= 1
-                let reportedNumber = Int(
-                    event.getIntegerValueField(
-                        .mouseEventWindowUnderMousePointerThatCanHandleThisEvent))
                 lastSnapshot = TapEvent.windowSnapshot(
-                    reportedNumber: reportedNumber, at: event.location)
+                    reportedNumber: reportedWindowNumber, at: point)
                 windowNumber = lastSnapshot?.windowNumber ?? 0
-                pressLock.lock()
-                latestPressGeneration[windowNumber] = generation
-                pressLock.unlock()
                 sampledDrag = false
-                lastSnapshotTimestamp = event.timestamp
+                lastSnapshotTimestamp = timestamp
                 gestureSource = lastSnapshot?.frame
                 movementProven = false
                 resizeProven = false
@@ -107,12 +101,12 @@ final class WindowSnapManager {
                 type == .leftMouseDown || type == .leftMouseUp
                 || (type == .leftMouseDragged
                     && (!sampledDrag || (!movementProven && !resizeProven)
-                        || event.timestamp < lastSnapshotTimestamp
-                        || event.timestamp - lastSnapshotTimestamp >= 50_000_000))
+                        || timestamp < lastSnapshotTimestamp
+                        || timestamp - lastSnapshotTimestamp >= 50_000_000))
             if shouldSample, windowNumber > 0, type != .leftMouseDown {
                 lastSnapshot = TapEvent.windowSnapshot(
-                    reportedNumber: windowNumber, at: event.location)
-                lastSnapshotTimestamp = event.timestamp
+                    reportedNumber: windowNumber, at: point)
+                lastSnapshotTimestamp = timestamp
                 if type == .leftMouseDragged {
                     sampledDrag = true
                     classifyMovement(lastSnapshot?.frame)
@@ -120,13 +114,14 @@ final class WindowSnapManager {
             }
             continuation.yield(
                 .capture(
-                    type: type, event: event, windowNumber: windowNumber,
+                    typeRaw: typeRaw, point: point, timestamp: timestamp,
+                    windowNumber: windowNumber,
                     generation: generation, snapshot: lastSnapshot,
                     movementProven: movementProven))
             if type == .leftMouseUp { windowNumber = 0 }
         }
 
-        private nonisolated func classifyMovement(_ frame: CGRect?) {
+        private func classifyMovement(_ frame: CGRect?) {
             guard let source = gestureSource, let frame else { return }
             if frame.size != source.size {
                 resizeProven = true
@@ -135,83 +130,9 @@ final class WindowSnapManager {
             }
         }
 
-        nonisolated func finish() { continuation.finish() }
+        func finish() { continuation.finish() }
 
-        nonisolated func hasNewerPress(windowNumber: Int, than generation: UInt64) -> Bool {
-            pressLock.lock()
-            let latest = latestPressGeneration[windowNumber]
-            pressLock.unlock()
-            return latest.map { $0 != generation } ?? false
-        }
-    }
-
-    /// Tap state stays on its thread; the lock guards every cross-thread handle used by stop().
-    private final class TapRunner: @unchecked Sendable {
-        private let bridge: TapBridge
-        private let lock = NSLock()
-        private var thread: Thread?
-        private var runLoop: CFRunLoop?
-        private var port: CFMachPort?
-        private var stopped = false
-
-        init(bridge: TapBridge) {
-            self.bridge = bridge
-        }
-
-        func start() {
-            let thread = Thread { [weak self] in self?.run() }
-            thread.name = "Tinycast window snap events"
-            self.thread = thread
-            thread.start()
-        }
-
-        func stop() {
-            lock.lock()
-            stopped = true
-            let runLoop = runLoop
-            let port = port
-            lock.unlock()
-            if let port { CFMachPortInvalidate(port) }
-            if let runLoop {
-                CFRunLoopStop(runLoop)
-                CFRunLoopWakeUp(runLoop)
-            }
-        }
-
-        private func run() {
-            let mask: CGEventMask =
-                (1 << CGEventType.leftMouseDown.rawValue)
-                | (1 << CGEventType.leftMouseDragged.rawValue)
-                | (1 << CGEventType.leftMouseUp.rawValue)
-            let port = CGEvent.tapCreate(
-                tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
-                eventsOfInterest: mask, callback: windowSnapEventTapCallback,
-                userInfo: Unmanaged.passUnretained(bridge).toOpaque())
-            let source = port.flatMap {
-                CFMachPortCreateRunLoopSource(kCFAllocatorDefault, $0, 0)
-            }
-            let runLoop = CFRunLoopGetCurrent()
-
-            lock.lock()
-            let stopped = stopped
-            if !stopped, source != nil {
-                self.port = port
-                self.runLoop = runLoop
-            }
-            lock.unlock()
-
-            guard !stopped, let port, let source else {
-                if let port { CFMachPortInvalidate(port) }
-                bridge.finish()
-                return
-            }
-            CFRunLoopAddSource(runLoop, source, .commonModes)
-            CGEvent.tapEnable(tap: port, enable: true)
-            CFRunLoopRun()
-            CFRunLoopRemoveSource(runLoop, source, .commonModes)
-            CFMachPortInvalidate(port)
-            bridge.finish()
-        }
+        func hasNewerPress(than generation: UInt64) -> Bool { self.generation != generation }
     }
 
     private let settings: AppSettings
@@ -219,13 +140,13 @@ final class WindowSnapManager {
     private var preview: WindowSnapPreviewController?
     private var interaction = WindowSnapInteraction<WindowMover.CapturedWindow>()
     private var interactionGeneration: UInt64?
-    private var tapRunner: TapRunner?
+    private var tapPort: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
     private var tapBridge: TapBridge?
     private var tapTask: Task<Void, Never>?
-    private var monitorRetryTask: Task<Void, Never>?
-    private var activationToken: NotificationToken?
     private var dropTask: Task<Void, Never>?
-    private var monitorLifecycle = WindowSnapMonitorLifecycle()
+
+    weak var healthTicker: HealthTicker?
 
     init(settings: AppSettings, mover: WindowMover) {
         self.settings = settings
@@ -234,111 +155,103 @@ final class WindowSnapManager {
 
     func applyEnabled() {
         guard settings.windowManagementEnabled, settings.windowSnapEnabled else {
-            activationToken = nil
-            setMonitoringEnabled(false)
+            healthTicker?.unsubscribe(self)
+            tearDownTap()
             return
         }
-        observeActivation()
-        setMonitoringEnabled(Permissions.ensureAccessibility())
+        healthTicker?.subscribe(self)
+        guard Permissions.ensureAccessibility() else {
+            tearDownTap()
+            return
+        }
+        installTapIfNeeded()
     }
 
     func stop() {
-        activationToken = nil
-        setMonitoringEnabled(false)
+        healthTicker?.unsubscribe(self)
+        tearDownTap()
     }
 
-    private func observeActivation() {
-        guard activationToken == nil else { return }
-        let token = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refreshPermission() }
-        }
-        activationToken = NotificationToken(token, center: .default)
-    }
-
-    private func refreshPermission() {
+    func healthCheck() {
         guard settings.windowManagementEnabled, settings.windowSnapEnabled else {
             stop()
             return
         }
-        setMonitoringEnabled(Permissions.isAccessibilityTrusted())
-    }
-
-    private func setMonitoringEnabled(_ enabled: Bool) {
-        if !enabled {
-            monitorRetryTask?.cancel()
-            monitorRetryTask = nil
+        guard Permissions.isAccessibilityTrusted() else {
+            tearDownTap()
+            return
         }
-        guard let action = monitorLifecycle.setEnabled(enabled) else { return }
-        perform(action)
-    }
-
-    private func perform(_ action: WindowSnapMonitorLifecycle.Action) {
-        switch action {
-        case .start: startMonitoring()
-        case .stop: stopMonitoring()
-        case .retry: scheduleMonitorRetry()
+        guard let tapPort else {
+            installTapIfNeeded()
+            return
         }
-    }
-
-    private func scheduleMonitorRetry() {
-        guard monitorRetryTask == nil else { return }
-        monitorRetryTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled, let self else { return }
-            self.monitorRetryTask = nil
-            guard let action = self.monitorLifecycle.retryReady() else { return }
-            self.perform(action)
+        guard CFMachPortIsValid(tapPort) else {
+            tearDownTap()
+            installTapIfNeeded()
+            return
         }
+        if !CGEvent.tapIsEnabled(tap: tapPort) { tapWasDisabled() }
     }
 
-    private func startMonitoring() {
-        guard tapRunner == nil else { return }
+    private func installTapIfNeeded() {
+        guard tapPort == nil else { return }
         let bridge = TapBridge()
-        let runner = TapRunner(bridge: bridge)
-        tapRunner = runner
+        let mask: CGEventMask =
+            (1 << CGEventType.leftMouseDown.rawValue)
+            | (1 << CGEventType.leftMouseDragged.rawValue)
+            | (1 << CGEventType.leftMouseUp.rawValue)
+        guard
+            let port = CGEvent.tapCreate(
+                tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
+                eventsOfInterest: mask, callback: windowSnapEventTapCallback,
+                userInfo: Unmanaged.passUnretained(bridge).toOpaque())
+        else { return }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0)
+        tapPort = port
+        runLoopSource = source
         tapBridge = bridge
-        runner.start()
         tapTask = Task { @MainActor [weak self, stream = bridge.stream] in
             for await event in stream {
                 guard !Task.isCancelled else { return }
                 await self?.handle(event, bridge: bridge)
             }
-            self?.monitorDidEnd(bridge: bridge)
         }
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: port, enable: true)
     }
 
-    private func stopMonitoring() {
+    private func tearDownTap() {
         dropTask?.cancel()
         dropTask = nil
-        tapRunner?.stop()
-        interaction.reset()
-        interactionGeneration = nil
-        preview?.hide()
-    }
-
-    private func monitorDidEnd(bridge: TapBridge) {
-        guard tapBridge === bridge else { return }
-        tapRunner = nil
-        tapBridge = nil
+        tapTask?.cancel()
         tapTask = nil
-        dropTask?.cancel()
-        dropTask = nil
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+            self.runLoopSource = nil
+        }
+        if let tapPort {
+            CGEvent.tapEnable(tap: tapPort, enable: false)
+            CFMachPortInvalidate(tapPort)
+            self.tapPort = nil
+        }
+        tapBridge?.finish()
+        tapBridge = nil
+        resetInteraction()
+    }
+
+    private func resetInteraction() {
         interaction.reset()
         interactionGeneration = nil
         preview?.hide()
-        if let action = monitorLifecycle.didEnd() { perform(action) }
     }
 
     private func tapWasDisabled() {
-        guard let action = monitorLifecycle.restart() else { return }
-        perform(action)
+        resetInteraction()
+        if let tapPort { CGEvent.tapEnable(tap: tapPort, enable: true) }
     }
 
     private func handle(_ event: TapEvent, bridge: TapBridge) async {
-        guard !Task.isCancelled, tapBridge === bridge, monitorLifecycle.acceptsEvents else { return }
-        monitorLifecycle.didReceiveEvent()
+        guard !Task.isCancelled, tapBridge === bridge else { return }
         guard let type = CGEventType(rawValue: event.typeRaw) else { return }
         let nativeScreens = NSScreen.screens
         let geometry = AXGeometry(screens: nativeScreens)
@@ -362,8 +275,8 @@ final class WindowSnapManager {
             interactionGeneration = nil
             drop(
                 at: event.point, releasedAt: event.timestamp, frame: event.sourceFrame,
-                movementProven: event.movementProven, windowNumber: event.windowNumber,
-                generation: event.generation, screens: screens, bridge: bridge)
+                movementProven: event.movementProven, generation: event.generation,
+                screens: screens, bridge: bridge)
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             tapWasDisabled()
         default:
@@ -393,7 +306,7 @@ final class WindowSnapManager {
 
     private func drop(
         at point: CGPoint, releasedAt timestamp: UInt64, frame: CGRect?,
-        movementProven: Bool, windowNumber: Int, generation: UInt64,
+        movementProven: Bool, generation: UInt64,
         screens: [WindowPlacementEngine.Screen], bridge: TapBridge
     ) {
         preview?.hide()
@@ -414,7 +327,7 @@ final class WindowSnapManager {
                 return
             }
             guard !Task.isCancelled, let self,
-                !bridge.hasNewerPress(windowNumber: windowNumber, than: generation)
+                !bridge.hasNewerPress(than: generation)
             else { return }
             mover.perform(
                 drop.target.command, window: drop.window, sourceFrame: drop.sourceFrame,
@@ -466,6 +379,14 @@ private func windowSnapEventTapCallback(
 ) -> Unmanaged<CGEvent>? {
     guard let userInfo else { return Unmanaged.passUnretained(event) }
     let bridge = Unmanaged<WindowSnapManager.TapBridge>.fromOpaque(userInfo).takeUnretainedValue()
-    bridge.captureAndYield(type: type, event: event)
+    let point = event.location
+    let timestamp = event.timestamp
+    let windowNumber = Int(
+        event.getIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent))
+    MainActor.assumeIsolated {
+        bridge.captureAndYield(
+            typeRaw: type.rawValue, point: point, timestamp: timestamp,
+            reportedWindowNumber: windowNumber)
+    }
     return Unmanaged.passUnretained(event)
 }

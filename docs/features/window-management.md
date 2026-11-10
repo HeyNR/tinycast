@@ -41,7 +41,6 @@ entries and a still-registered shortcut moves nothing.
 | `Model/WindowActionMemory.swift`     | Foundation + CoreGraphics    | **Pure.** Per-window cycle position and restore point               |
 | `Model/WindowServerHit.swift`        | Foundation + CoreGraphics    | **Pure.** Exact-or-frontmost WindowServer hit selection             |
 | `Model/WindowSnapInteraction.swift`  | Foundation + CoreGraphics    | **Pure.** One drag's capture, movement proof, zones and drop        |
-| `Model/WindowSnapMonitorLifecycle.swift` | Foundation              | **Pure.** Event-tap start, stop and restart ordering                 |
 | `Model/SpaceGesture.swift`           | Foundation                   | **Pure.** The Dock-swipe field tables and the IOHID payload bytes   |
 | `Service/AXWindowAccess.swift`       | AppKit + ApplicationServices | AX reads off-main; main-actor targeting and the one write sequence |
 | `Service/AXScreens.swift`            | AppKit + ColorSync           | `@MainActor`. `AXGeometry`, the one coordinate flip                 |
@@ -50,7 +49,6 @@ entries and a still-registered shortcut moves nothing.
 | `Service/SpaceSwitcher.swift`        | CoreGraphics                 | `@MainActor`. Space event encoding and the payload splice           |
 | `Service/WindowTarget.swift`         | AppKit                       | `@MainActor`. Which window a command acts on                        |
 | `UI/WindowSnapPreviewController.swift` | AppKit + SwiftUI           | The click-through preview panel                                    |
-| `UI/WindowSnapPreviewView.swift`     | SwiftUI                      | The preview's themed wash and outline                              |
 | `Model/CustomWindowSize.swift`       | Foundation + CoreGraphics    | **Pure.** A custom size, its units and the frame it resolves to     |
 | `Model/CustomWindowSizeStore.swift`  | Foundation                   | The custom-size library, as JSON in `UserDefaults`                  |
 | `UI/WindowCommandCoordinator.swift`  | AppKit                       | The one funnel from a palette row or a global hotkey                |
@@ -255,9 +253,9 @@ for keystrokes: same shape, same `Service/` position, one idea applied twice.
 ## Dragging to snap
 
 Settings › Window Management › **Drag windows to snap** starts `WindowSnapManager`'s passive
-left-mouse event tap. A dedicated run-loop thread captures immutable event data and exact WindowServer
-geometry until the gesture proves a move or resize, then at most every 50 ms. Its bounded, ordered
-stream tags every sample with a gesture generation. When an event supplies no window number, the
+left-mouse event tap on the main run loop. The callback captures exact WindowServer geometry until the
+gesture proves a move or resize, then at most every 50 ms. Its bounded, ordered stream tags every
+sample with a gesture generation. When an event supplies no window number, the
 frontmost WindowServer row containing the pointer supplies it instead. External app-scoped AX hit
 testing then walks from a child control to that exact captured number. One of our windows comes from
 the same AppKit number and the same `WindowTarget.placeable` filter commands use. The common-mode tap
@@ -281,9 +279,8 @@ so crossing displays previews and lands against that display's `visibleFrame`, w
 The preview is a click-through, nonactivating panel on every Space. It never becomes key or main and
 therefore cannot become the drag target itself. Monitoring as a whole is gated by Accessibility;
 once running, external windows use AX while our own Notes and app windows are read and written through
-AppKit. Enabling the setting prompts once, then `WindowSnapManager` rechecks trust whenever Tinycast
-becomes active, starting after the user returns from Privacy & Security and stopping immediately if
-the grant was revoked.
+AppKit. Enabling the setting prompts once, then the shared health ticker retries unavailable taps,
+re-enables a disabled tap and removes it if Accessibility is revoked.
 
 ## Applying a placement
 
