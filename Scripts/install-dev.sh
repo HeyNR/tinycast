@@ -39,7 +39,7 @@ xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug \
     build
 
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" \
-    = "com.tinycast.app.dev" ] || {
+    = "com.abueammar.tinycast.dev" ] || {
     echo "✗ Built app has the wrong bundle identifier." >&2
     exit 1
 }
